@@ -28,6 +28,7 @@ docs/FAILURES.md
 # Media
 *.mp4
 *.mov
+!tests/fixtures/*.mp4
 
 # OS / editor
 .DS_Store
