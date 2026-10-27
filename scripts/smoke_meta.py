@@ -39,9 +39,11 @@ TOOLS = [
 
 
 def main() -> int:
-    text = meta.chat(TEXT_MESSAGES, max_tokens=16)
-    print("text:", text.choices[0].message.content.strip())
-    tool = meta.chat(TOOL_MESSAGES, tools=TOOLS, tool_choice="auto", max_tokens=64)
+    # Spark is a reasoning model: keep max_tokens generous or reasoning alone
+    # exhausts the budget and content comes back None (finish_reason=length).
+    text = meta.chat(TEXT_MESSAGES, max_tokens=512)
+    print("text:", (text.choices[0].message.content or "").strip())
+    tool = meta.chat(TOOL_MESSAGES, tools=TOOLS, tool_choice="auto", max_tokens=1024)
     calls = tool.choices[0].message.tool_calls or []
     print("tool_calls:", [(c.function.name, c.function.arguments) for c in calls])
     print("cost log:", meta.default_log_path())
