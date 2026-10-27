@@ -151,3 +151,23 @@ def test_compute_cost_usd() -> None:
 
     assert compute_cost_usd(1_000_000, 1_000_000) == 5.5
     assert compute_cost_usd(0, 0) == 0.0
+
+
+def test_synthetic_tracker_accuracy_from_fixtures() -> None:
+    """Committed evidence: tracked centroids vs ground truth, no API needed."""
+    import json
+    import statistics
+    from pathlib import Path as _Path
+
+    from pixelphys import trajectory as traj
+    from pixelphys.synthetic import PX_PER_M, GROUND_Y_PX, FRAME_W
+
+    root = _Path(__file__).resolve().parent / "fixtures"
+    truth = json.loads((root / "toss_drag.json").read_text())
+    obs = traj.load_observations(root / "obs_synthetic_toss_drag.json")
+    expected = [(FRAME_W // 2, GROUND_Y_PX - q * PX_PER_M) for q in truth["q"]]
+    assert len(obs) == len(expected) == len(truth["q"])
+    errs = [abs(o.cx - ex) + abs(o.cy - ey)
+            for o, (ex, ey) in zip(obs, expected)]
+    assert statistics.mean(errs) <= 1.0, errs
+    assert max(errs) <= 2.0, max(errs)

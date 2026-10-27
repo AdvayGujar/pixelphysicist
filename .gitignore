@@ -16,6 +16,7 @@ results/*.json
 data/clips/*
 data/synthetic/*
 !data/clips/.gitkeep
+!data/clips/notes.md
 !data/synthetic/.gitkeep
 
 # Local-only docs (planning notes, failure log, API transcripts) - never commit
