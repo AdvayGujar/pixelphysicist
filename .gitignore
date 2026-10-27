@@ -1,0 +1,28 @@
+# Python
+__pycache__/
+*.py[cod]
+*.egg-info/
+.venv/
+venv/
+
+# Env / secrets - never commit keys
+.env
+.env.*
+
+# Runs, results, data (large / generated)
+runs/
+results/*.csv
+results/*.json
+data/clips/*
+data/synthetic/*
+!data/clips/.gitkeep
+!data/synthetic/.gitkeep
+
+# Media
+*.mp4
+*.mov
+
+# OS / editor
+.DS_Store
+.idea/
+.vscode/

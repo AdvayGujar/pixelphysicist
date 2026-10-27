@@ -1,0 +1,25 @@
+[project]
+name = "pixelphys"
+version = "0.1.0"
+description = "Film a moving object with a phone. SAM 3.1 tracks it, Muse Spark discovers the physics."
+readme = "README.md"
+requires-python = ">=3.11"
+dependencies = [
+    "openai>=1.0",
+    "meta-sam-parser>=0.1",
+    "numpy>=1.26",
+    "scipy>=1.12",
+    "opencv-python>=4.9",
+    "imageio-ffmpeg>=0.5",
+    "matplotlib>=3.8",
+    "rich>=13.0",
+]
+
+[project.optional-dependencies]
+dev = ["pytest>=8.0"]
+
+[project.scripts]
+pixelphys = "pixelphys.cli:main"
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
