@@ -78,7 +78,6 @@ def render_toss_drag(mp4_path: Path, json_path: Path, params: TossParams = TossP
     sampled_q = sample_at_fps(times, positions)
     sampled_v = sample_at_fps(times, velocities)
     sampled_t = sample_at_fps(times, times)
-    render_clip(sampled_q, mp4_path)
     truth = {
         "model": "q'' = -g - c*v*|v|",
         "params": {"v0": params.v0, "gravity": params.gravity, "drag": params.drag},
@@ -88,4 +87,5 @@ def render_toss_drag(mp4_path: Path, json_path: Path, params: TossParams = TossP
         "v": sampled_v,
     }
     json_path.write_text(json.dumps(truth))
+    render_clip(sampled_q, mp4_path)
     return {"mp4": mp4_path, "json": json_path}
