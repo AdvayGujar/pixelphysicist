@@ -32,3 +32,22 @@ def test_config_defaults_to_meta_base_url(monkeypatch) -> None:  # type: ignore[
     monkeypatch.setenv("MODEL_API_KEY", "dummy")
     monkeypatch.delenv("MODEL_BASE_URL", raising=False)
     assert config.load_settings().base_url == "https://api.meta.ai/v1"
+
+
+def test_observations_skip_text_records() -> None:
+    from meta_sam_parser import SegmentationTextRecord
+
+    from pixelphys.tracking import observations_from_records
+
+    text = SegmentationTextRecord(order=0, text="hello")
+    assert observations_from_records([text], fps=30.0) == []
+
+
+def test_observation_cache_round_trip(tmp_path) -> None:  # type: ignore[no-untyped-def]
+    from pixelphys import trajectory as traj
+    from pixelphys.tracking import Observation
+
+    obs = [Observation(0, 0.0, 1.0, 2.0, (0.0, 0.0, 3.0, 3.0), 10.0, 0.9)]
+    loaded = traj.load_observations(traj.save_observations(obs, tmp_path / "obs.json"))
+    assert loaded == obs
+    assert isinstance(loaded[0].bbox, tuple)

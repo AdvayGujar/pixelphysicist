@@ -7,7 +7,7 @@ venv/
 
 # Env / secrets - never commit keys
 .env
-.env.*
+!.env.example
 
 # Runs, results, data (large / generated)
 runs/

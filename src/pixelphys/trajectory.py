@@ -64,7 +64,11 @@ def save_observations(obs: list[Observation], path: Path) -> Path:
 
 
 def load_observations(path: Path) -> list[Observation]:
-    return [Observation(**row) for row in json.loads(path.read_text())]
+    loaded = []
+    for row in json.loads(path.read_text()):
+        row["bbox"] = tuple(row["bbox"])
+        loaded.append(Observation(**row))
+    return loaded
 
 
 def trajectory_summary(t: np.ndarray, q: np.ndarray) -> dict[str, Any]:

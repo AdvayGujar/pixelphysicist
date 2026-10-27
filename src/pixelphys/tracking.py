@@ -37,10 +37,11 @@ def observations_from_records(records: Any, fps: float) -> list[Observation]:
     observations: list[Observation] = []
     for record in records:
         kind = type(record).__name__
-        key = (record.frame.frame_index, record.object_id)
         if kind == "SegmentationBoxRecord":
+            key = (record.frame.frame_index, record.object_id)
             boxes[key] = record
         elif kind == "SegmentationMaskRecord":
+            key = (record.frame.frame_index, record.object_id)
             box = boxes.get(key)
             if box is None:
                 continue

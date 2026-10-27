@@ -99,20 +99,3 @@ def chat(messages: list[dict[str, Any]], model: str = SPARK_MODEL_ID,
     log_call(ApiCall("chat.completions", model, True, time.time() - start,
                      prompt_tokens, completion_tokens), log_path)
     return response
-
-
-def respond(request: dict[str, Any], log_path: Path | None = None) -> Any:
-    """One Responses API call (SAM 3.1), retried and cost-logged."""
-    client = get_client()
-    model = str(request.get("model", ""))
-    start = time.time()
-    try:
-        response = _with_retries("responses", client.responses.create, **request)
-    except RuntimeError as exc:
-        log_call(ApiCall("responses", model, False, time.time() - start,
-                         error=str(exc)[:200]), log_path)
-        raise
-    prompt_tokens, completion_tokens = _usage_of(response)
-    log_call(ApiCall("responses", model, True, time.time() - start,
-                     prompt_tokens, completion_tokens), log_path)
-    return response
