@@ -19,9 +19,16 @@ def test_config_fails_fast_without_key(monkeypatch) -> None:  # type: ignore[no-
     from pixelphys import config
 
     monkeypatch.delenv("MODEL_API_KEY", raising=False)
-    monkeypatch.delenv("MODEL_BASE_URL", raising=False)
     try:
         config.load_settings()
     except RuntimeError:
         return
     raise AssertionError("load_settings should fail fast without MODEL_API_KEY")
+
+
+def test_config_defaults_to_meta_base_url(monkeypatch) -> None:  # type: ignore[no-untyped-def]
+    from pixelphys import config
+
+    monkeypatch.setenv("MODEL_API_KEY", "dummy")
+    monkeypatch.delenv("MODEL_BASE_URL", raising=False)
+    assert config.load_settings().base_url == "https://api.meta.ai/v1"

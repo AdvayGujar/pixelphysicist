@@ -8,6 +8,9 @@ from pathlib import Path
 SAM_MODEL_ID = "sam-3.1"
 SPARK_MODEL_ID = "muse-spark-1.3"
 
+# Single API (SAM docs): images, video, and LLMs share one base URL + Bearer key.
+DEFAULT_BASE_URL = "https://api.meta.ai/v1"
+
 PROJECT_ROOT = Path(__file__).resolve().parents[2]
 DATA_CLIPS = PROJECT_ROOT / "data" / "clips"
 DATA_SYNTHETIC = PROJECT_ROOT / "data" / "synthetic"
@@ -23,9 +26,7 @@ class Settings:
 
 def load_settings() -> Settings:
     api_key = os.environ.get("MODEL_API_KEY", "")
-    base_url = os.environ.get("MODEL_BASE_URL", "")
+    base_url = os.environ.get("MODEL_BASE_URL", "") or DEFAULT_BASE_URL
     if not api_key:
         raise RuntimeError("MODEL_API_KEY is not set. Copy .env.example to .env and fill it in.")
-    if not base_url:
-        raise RuntimeError("MODEL_BASE_URL is not set. Copy .env.example to .env and fill it in.")
     return Settings(api_key=api_key, base_url=base_url)
