@@ -14,16 +14,16 @@ from pathlib import Path
 FRAME_W = 640
 FRAME_H = 480
 FPS = 30
-DOT_RADIUS_PX = 12
+DOT_RADIUS_PX = 20
 GROUND_Y_PX = 440
-PX_PER_M = 400
+PX_PER_M = 250
 BACKGROUND = (255, 255, 255)
 DOT_COLOR = (20, 20, 20)
 
 
 @dataclass(frozen=True)
 class TossParams:
-    v0: float = 4.0
+    v0: float = 6.0
     gravity: float = 9.81
     drag: float = 0.35
     duration_s: float = 3.0
@@ -46,6 +46,8 @@ def integrate_toss(params: TossParams, dt: float = 1.0 / 240.0) -> tuple[list[fl
         times.append(times[-1] + dt)
         positions.append(new_q)
         velocities.append(new_v)
+        if times[-1] > 0.1 and new_q < 0.0 and new_v < 0.0:
+            break  # caught at release height: mirrors the real cut-at-impact
     return times, positions, velocities
 
 
