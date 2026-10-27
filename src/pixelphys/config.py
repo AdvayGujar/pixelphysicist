@@ -11,7 +11,16 @@ SPARK_MODEL_ID = "muse-spark-1.3"
 # Single API (SAM docs): images, video, and LLMs share one base URL + Bearer key.
 DEFAULT_BASE_URL = "https://api.meta.ai/v1"
 
-PROJECT_ROOT = Path(__file__).resolve().parents[2]
+
+def _find_root(start: Path) -> Path:
+    """Nearest ancestor holding pyproject.toml; falls back to source layout."""
+    for parent in (start, *start.parents):
+        if (parent / "pyproject.toml").exists():
+            return parent
+    return start.parents[2]
+
+
+PROJECT_ROOT = _find_root(Path(__file__).resolve())
 DATA_CLIPS = PROJECT_ROOT / "data" / "clips"
 DATA_SYNTHETIC = PROJECT_ROOT / "data" / "synthetic"
 RESULTS_DIR = PROJECT_ROOT / "results"

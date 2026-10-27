@@ -17,9 +17,11 @@ def build_parser() -> argparse.ArgumentParser:
 
 def main(argv: list[str] | None = None) -> int:
     parser = build_parser()
-    parser.parse_args(argv)
-    parser.print_usage()
-    return 0
+    args = parser.parse_args(argv)
+    print("pixelphys run is not wired yet (Day 6). "
+          "Use scripts/plot_qt.py + scripts/track_batch.py for now.")
+    print(f"clip={args.clip} prompt={args.prompt} scale={args.scale} pivot={args.pivot}")
+    return 1
 
 
 if __name__ == "__main__":

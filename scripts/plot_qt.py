@@ -26,6 +26,8 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument("--file-id", default=None)
     parser.add_argument("--trim", action="store_true",
                         help="Cut to the free-flight window (launch to first impact).")
+    parser.add_argument("--axis", choices=["x", "y"], default="y",
+                        help="Which image axis is the 1-DOF coordinate (pendulum swings in x).")
     parser.add_argument("--out", required=True)
     return parser
 
@@ -41,7 +43,7 @@ def main(argv: list[str] | None = None) -> int:
     from pixelphys.tracking import clip_fps  # noqa: E402
 
     fps = args.fps if args.fps is not None else clip_fps(clip)
-    cache = Path("runs") / f"obs_{clip.stem}.json"
+    cache = traj.cache_path(clip, args.prompt)
     if cache.exists():
         obs = traj.load_observations(cache)
         print(f"loaded {len(obs)} cached observations")
@@ -50,8 +52,13 @@ def main(argv: list[str] | None = None) -> int:
         traj.save_observations(obs, cache)
         print(f"tracked {len(obs)} observations")
     obs = traj.clean_observations(obs)
-    t, _, cy = traj.resample_uniform(obs, fps)
-    q = traj.vertical_q(traj.smooth_position(cy))
+    runs = traj.split_by_gaps(obs)
+    obs = max(runs, key=len)
+    print(f"using longest consecutive run: {len(obs)} of {sum(len(r) for r in runs)} obs")
+    t, cx, cy = traj.resample_uniform(obs, fps)
+    raw = cx if args.axis == "x" else cy
+    q = traj.rest_relative_q(traj.smooth_position(raw)) if args.axis == "x" \
+        else traj.vertical_q(traj.smooth_position(raw))
     if args.trim:
         start, end = traj.trim_free_flight(t, q)
         t, q = t[start:end], q[start:end]

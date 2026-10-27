@@ -30,35 +30,61 @@ def raster_centroid(raster: bytes, width: int, height: int) -> tuple[float, floa
 
 
 def observations_from_records(records: Any, fps: float) -> list[Observation]:
-    """Pair box+mask records by (frame, object) into Observations."""
+    """Pair box+mask records by (frame, object) into Observations.
+
+    Two passes: masks are kept even when their box record arrives later.
+    When several objects appear, only the most present one (most frames,
+    then largest mean area) becomes the trajectory.
+    """
     from meta_sam_parser import decode_mask_to_raster
 
     boxes: dict[tuple[int, str], Any] = {}
-    observations: list[Observation] = []
+    masks: list[Any] = []
     for record in records:
         kind = type(record).__name__
         if kind == "SegmentationBoxRecord":
-            key = (record.frame.frame_index, record.object_id)
-            boxes[key] = record
+            boxes[(record.frame.frame_index, record.object_id)] = record
         elif kind == "SegmentationMaskRecord":
-            key = (record.frame.frame_index, record.object_id)
-            box = boxes.get(key)
-            if box is None:
-                continue
-            raster = decode_mask_to_raster(record.mask)
-            center = raster_centroid(raster, record.mask.width, record.mask.height)
-            if center is None:
-                continue
-            local_x, local_y, area = center
-            observations.append(Observation(
-                frame_idx=key[0],
-                t=key[0] / fps,
-                cx=box.left + local_x,
-                cy=box.top + local_y,
-                bbox=(box.left, box.top, box.right, box.bottom),
-                mask_area=area,
-                confidence=record.confidence if record.confidence is not None else -1.0,
-            ))
+            masks.append(record)
+
+    decoded: list[tuple[Any, Any, tuple[float, float, float]]] = []
+    for mask_record in masks:
+        key = (mask_record.frame.frame_index, mask_record.object_id)
+        box = boxes.get(key)
+        if box is None:
+            continue
+        raster = decode_mask_to_raster(mask_record.mask)
+        center = raster_centroid(raster, mask_record.mask.width, mask_record.mask.height)
+        if center is None:
+            continue
+        decoded.append((box, mask_record, center))
+    if not decoded:
+        return []
+
+    by_object: dict[str, list[int]] = {}
+    for i, (_, mask_record, _) in enumerate(decoded):
+        by_object.setdefault(mask_record.object_id, []).append(i)
+
+    def object_score(object_id: str) -> tuple[int, float]:
+        idxs = by_object[object_id]
+        frames = len({decoded[i][1].frame.frame_index for i in idxs})
+        mean_area = sum(decoded[i][2][2] for i in idxs) / len(idxs)
+        return frames, mean_area
+
+    chosen = max(by_object, key=object_score)
+    observations: list[Observation] = []
+    for i in by_object[chosen]:
+        box, mask_record, (local_x, local_y, area) = decoded[i]
+        frame_idx = mask_record.frame.frame_index
+        observations.append(Observation(
+            frame_idx=frame_idx,
+            t=frame_idx / fps,
+            cx=box.left + local_x,
+            cy=box.top + local_y,
+            bbox=(box.left, box.top, box.right, box.bottom),
+            mask_area=area,
+            confidence=mask_record.confidence if mask_record.confidence is not None else -1.0,
+        ))
     observations.sort(key=lambda o: o.frame_idx)
     return observations
 
@@ -136,7 +162,7 @@ async def track_video(file_id: str, prompt: str, fps: float,
                 {"type": "input_video", "file_id": file_id},
             ]}],
             stream=True,
-            metadata={"mask_encoding": "one_bit"},
+            metadata={"mask_encoding": "one_bit", "include_confidence": "true"},
         )
         return await parse_responses_stream(events, video_segmentation_format()).final_result()
 
@@ -168,3 +194,52 @@ def track_clip(path: Path, prompt: str, fps: float, file_id: str | None = None) 
     billed = clip_frame_count(path)
     return asyncio.run(track_video(file_id or upload_clip(path), prompt, fps,
                                   billed_frames=billed))
+
+
+TENNIS_GREEN_LOW = (25, 40, 40)
+TENNIS_GREEN_HIGH = (85, 255, 255)
+SYNTHETIC_DARK_LOW = (0, 0, 0)
+SYNTHETIC_DARK_HIGH = (180, 255, 60)
+
+
+def track_color_clip(path: Path, low: tuple[int, int, int] = TENNIS_GREEN_LOW,
+                     high: tuple[int, int, int] = TENNIS_GREEN_HIGH,
+                     fps: float | None = None) -> list[Observation]:
+    """HSV fallback tracker: largest contour centroid per frame.
+
+    Deterministic and offline. Confidence is 1.0 (no model involved).
+    """
+    import cv2
+    import numpy as np
+
+    fps = fps if fps is not None else clip_fps(path)
+    capture = cv2.VideoCapture(str(path))
+    observations: list[Observation] = []
+    try:
+        idx = 0
+        while True:
+            ok, frame = capture.read()
+            if not ok:
+                break
+            mask = cv2.inRange(cv2.cvtColor(frame, cv2.COLOR_BGR2HSV),
+                               np.array(low), np.array(high))
+            contours, _ = cv2.findContours(mask, cv2.RETR_EXTERNAL,
+                                           cv2.CHAIN_APPROX_SIMPLE)
+            if contours:
+                biggest = max(contours, key=cv2.contourArea)
+                moments = cv2.moments(biggest)
+                if moments["m00"] > 0:
+                    x, y, w, h = cv2.boundingRect(biggest)
+                    observations.append(Observation(
+                        frame_idx=idx,
+                        t=idx / fps,
+                        cx=moments["m10"] / moments["m00"],
+                        cy=moments["m01"] / moments["m00"],
+                        bbox=(float(x), float(y), float(x + w), float(y + h)),
+                        mask_area=float(cv2.contourArea(biggest)),
+                        confidence=1.0,
+                    ))
+            idx += 1
+    finally:
+        capture.release()
+    return observations

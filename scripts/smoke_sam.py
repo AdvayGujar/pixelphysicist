@@ -1,11 +1,11 @@
-"""SAM 3.1 image smoke test (plan.md Day-1 gate G1, step 1).
+"""SAM 3.1 image smoke test (plan.md Day-1 gate G1, step 1). [PROBE — G1 record]
 
 Sends one Responses request with a noun-phrase prompt + one image URL,
 parses the output_text lane with meta-sam-parser, decodes one mask raster.
 Characterizes: latency, record counts, raster sizes.
 
 Usage:
-    set -a; source .env; set +a
+    set -a; source .env
     .venv/bin/python scripts/smoke_sam.py --image-url https://example.com/street.png --prompt "yellow school bus"
 
 Local-file and video wiring (input_video / Files API) lands after this

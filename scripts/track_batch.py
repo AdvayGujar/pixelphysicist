@@ -33,7 +33,7 @@ def main(argv: list[str] | None = None) -> int:
         return 1
     for clip in clips:
         stem = Path(clip).stem
-        cache = Path("runs") / f"obs_{stem}.json"
+        cache = traj.cache_path(Path(clip), args.prompt)
         if cache.exists() and not args.force:
             print(f"{stem}: cached ({len(traj.load_observations(cache))} obs)")
             continue
