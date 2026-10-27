@@ -21,8 +21,11 @@ def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(description="Plot q(t) for a clip.")
     parser.add_argument("--clip", required=True)
     parser.add_argument("--prompt", required=True)
-    parser.add_argument("--fps", type=float, required=True)
+    parser.add_argument("--fps", type=float, default=None,
+                        help="Frame rate; probed from the clip when omitted.")
     parser.add_argument("--file-id", default=None)
+    parser.add_argument("--trim", action="store_true",
+                        help="Cut to the free-flight window (launch to first impact).")
     parser.add_argument("--out", required=True)
     return parser
 
@@ -35,17 +38,24 @@ def main(argv: list[str] | None = None) -> int:
 
     args = build_parser().parse_args(argv)
     clip = Path(args.clip)
+    from pixelphys.tracking import clip_fps  # noqa: E402
+
+    fps = args.fps if args.fps is not None else clip_fps(clip)
     cache = Path("runs") / f"obs_{clip.stem}.json"
     if cache.exists():
         obs = traj.load_observations(cache)
         print(f"loaded {len(obs)} cached observations")
     else:
-        obs = track_clip(clip, args.prompt, args.fps, file_id=args.file_id)
+        obs = track_clip(clip, args.prompt, fps, file_id=args.file_id)
         traj.save_observations(obs, cache)
         print(f"tracked {len(obs)} observations")
     obs = traj.clean_observations(obs)
-    t, _, cy = traj.resample_uniform(obs, args.fps)
+    t, _, cy = traj.resample_uniform(obs, fps)
     q = traj.vertical_q(traj.smooth_position(cy))
+    if args.trim:
+        start, end = traj.trim_free_flight(t, q)
+        t, q = t[start:end], q[start:end]
+        print(f"trimmed to free flight: {len(t)} points, {t[0]:.2f}..{t[-1]:.2f} s")
     t_fit, q_fit, t_held, q_held = traj.split_fit_held(t, q)
     print(traj.trajectory_summary(t, q))
 

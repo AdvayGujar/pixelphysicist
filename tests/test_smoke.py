@@ -18,6 +18,7 @@ def test_cli_help() -> None:
 def test_config_fails_fast_without_key(monkeypatch) -> None:  # type: ignore[no-untyped-def]
     from pixelphys import config
 
+    monkeypatch.setenv("PIXELPHYS_NO_DOTENV", "1")
     monkeypatch.delenv("MODEL_API_KEY", raising=False)
     try:
         config.load_settings()
@@ -29,6 +30,7 @@ def test_config_fails_fast_without_key(monkeypatch) -> None:  # type: ignore[no-
 def test_config_defaults_to_meta_base_url(monkeypatch) -> None:  # type: ignore[no-untyped-def]
     from pixelphys import config
 
+    monkeypatch.setenv("PIXELPHYS_NO_DOTENV", "1")
     monkeypatch.setenv("MODEL_API_KEY", "dummy")
     monkeypatch.delenv("MODEL_BASE_URL", raising=False)
     assert config.load_settings().base_url == "https://api.meta.ai/v1"
@@ -51,3 +53,32 @@ def test_observation_cache_round_trip(tmp_path) -> None:  # type: ignore[no-unty
     loaded = traj.load_observations(traj.save_observations(obs, tmp_path / "obs.json"))
     assert loaded == obs
     assert isinstance(loaded[0].bbox, tuple)
+
+
+def test_trim_free_flight_cuts_bounces() -> None:
+    import numpy as np
+
+    from pixelphys import trajectory as traj
+
+    t = np.arange(0.0, 2.0, 1.0 / 30.0)
+    q = np.where(t <= 1.0, 500.0 * t,
+                 np.where(t <= 1.5, 500.0 - 800.0 * (t - 1.0), 100.0 + 600.0 * (t - 1.5)))
+    start, end = traj.trim_free_flight(t, q)
+    assert abs(t[start] - 0.05) < 0.05
+    assert abs(t[end - 1] - 1.5) < 0.05
+    assert end - start >= 40
+
+
+def test_dotenv_loader_respects_no_override(tmp_path, monkeypatch) -> None:  # type: ignore[no-untyped-def]
+    import os
+
+    from pixelphys import config
+
+    dotenv = tmp_path / ".env"
+    dotenv.write_text("MODEL_API_KEY=from-file\n")
+    monkeypatch.setattr(config, "PROJECT_ROOT", tmp_path)
+    monkeypatch.delenv("MODEL_API_KEY", raising=False)
+    monkeypatch.setenv("FROM_TEST", "x")
+    config.load_dotenv()
+    assert os.environ["MODEL_API_KEY"] == "from-file"
+    assert "FROM_TEST" in os.environ

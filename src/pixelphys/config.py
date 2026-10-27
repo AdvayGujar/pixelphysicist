@@ -25,8 +25,26 @@ class Settings:
 
 
 def load_settings() -> Settings:
+    load_dotenv()
     api_key = os.environ.get("MODEL_API_KEY", "")
     base_url = os.environ.get("MODEL_BASE_URL", "") or DEFAULT_BASE_URL
     if not api_key:
         raise RuntimeError("MODEL_API_KEY is not set. Copy .env.example to .env and fill it in.")
     return Settings(api_key=api_key, base_url=base_url)
+
+
+def load_dotenv() -> None:
+    """Minimal .env loader (no dependency): KEY=VALUE lines, no override."""
+    if os.environ.get("PIXELPHYS_NO_DOTENV"):
+        return
+    env_path = PROJECT_ROOT / ".env"
+    if not env_path.exists():
+        return
+    for line in env_path.read_text().splitlines():
+        line = line.strip()
+        if not line or line.startswith("#") or "=" not in line:
+            continue
+        key, value = line.split("=", 1)
+        key, value = key.strip(), value.strip().strip("\"'")
+        if key and key not in os.environ:
+            os.environ[key] = value

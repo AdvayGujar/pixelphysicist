@@ -19,7 +19,7 @@ phone clip
 The numeric fitting is classical. Spark's contribution is proposing and
 revising model *structure* from residual evidence; an ablation with a negative
 control measures exactly that contribution. The pipeline handles one 1-DOF
-coordinate, one object, one static camera. See `plan.md` for the full build plan.
+coordinate, one object, one static camera.
 
 ## Quickstart
 

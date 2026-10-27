@@ -29,6 +29,8 @@ class ApiCall:
     latency_s: float
     prompt_tokens: int = 0
     completion_tokens: int = 0
+    video_frames_billed: int = 0
+    video_frames_observed: int = 0
     error: str = ""
 
 
@@ -47,6 +49,8 @@ def log_call(call: ApiCall, log_path: Path | None = None) -> Path:
         "latency_s": round(call.latency_s, 3),
         "prompt_tokens": call.prompt_tokens,
         "completion_tokens": call.completion_tokens,
+        "video_frames_billed": call.video_frames_billed,
+        "video_frames_observed": call.video_frames_observed,
         "error": call.error,
     }
     with path.open("a") as handle:

@@ -57,6 +57,29 @@ def split_fit_held(t: np.ndarray, q: np.ndarray, frac: float = FIT_FRAC) -> tupl
     return t[:cut], q[:cut], t[cut:], q[cut:]
 
 
+def trim_free_flight(t: np.ndarray, q: np.ndarray) -> tuple[int, int]:
+    """Indices [start, end) of the free-flight window: launch to first impact.
+
+    Start is the first rise above 5% of apex height (cuts hand-hold);
+    end is the first downward-velocity reversal after the apex (impact).
+    Raises when no usable window exists.
+    """
+    if len(t) < 3:
+        raise ValueError(f"need >= 3 samples to trim, got {len(t)}")
+    apex = int(np.argmax(q))
+    if apex < 1:
+        raise ValueError("no rise before apex: not a free-flight arc")
+    height = float(q[apex] - q[0])
+    if height <= 0:
+        raise ValueError("apex is not above launch: not a free-flight arc")
+    start = next(i for i in range(apex) if q[i] - q[0] >= 0.05 * height)
+    velocity = np.gradient(q, t)
+    end = next((i for i in range(apex + 1, len(t)) if velocity[i] >= 0.0), len(t))
+    if end - start < 3:
+        raise ValueError("free-flight window too short")
+    return start, end
+
+
 def save_observations(obs: list[Observation], path: Path) -> Path:
     path.parent.mkdir(parents=True, exist_ok=True)
     path.write_text(json.dumps([asdict(o) for o in obs]))
