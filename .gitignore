@@ -18,6 +18,12 @@ data/synthetic/*
 !data/clips/.gitkeep
 !data/synthetic/.gitkeep
 
+# Local-only docs (planning notes, failure log, API transcripts) - never commit
+plan.md
+plan-v1.md
+response.md
+docs/FAILURES.md
+
 # Media
 *.mp4
 *.mov
