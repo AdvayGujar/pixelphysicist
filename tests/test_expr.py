@@ -61,6 +61,22 @@ def test_invalid_terms_rejected(bad: str) -> None:
         expr.validate_term(bad)
 
 
+def test_duplicate_terms_rejected() -> None:
+    with pytest.raises(ValueError, match="duplicate"):
+        expr.validate_terms(["q", " q "])
+
+
+@pytest.mark.parametrize("bad_const", ["1e999"])
+def test_nonfinite_constants_rejected(bad_const: str) -> None:
+    with pytest.raises(ValueError):
+        expr.validate_term(bad_const)
+
+
+def test_overflowing_power_evaluates_to_nan() -> None:
+    values = expr.compile_term("10**400")(np.zeros(3), np.zeros(3))
+    assert np.all(np.isnan(values))
+
+
 def test_term_length_capped() -> None:
     with pytest.raises(ValueError, match="longer than"):
         expr.validate_term("q+" * 40)

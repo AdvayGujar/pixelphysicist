@@ -23,3 +23,4 @@ pixelphys = "pixelphys.cli:main"
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
+markers = ["slow: full shooting fits; skip for the fast inner loop with -m 'not slow'"]

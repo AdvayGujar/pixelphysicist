@@ -8,7 +8,9 @@ NumPy-only namespace -- a raw model string is never passed to ``eval``.
 from __future__ import annotations
 
 import ast
+import math
 from collections.abc import Callable
+from functools import lru_cache
 from typing import Any
 
 import numpy as np
@@ -63,43 +65,61 @@ class _TermValidator(ast.NodeVisitor):
     def visit_Constant(self, node: ast.Constant) -> None:
         if isinstance(node.value, bool) or not isinstance(node.value, (int, float)):
             raise ValueError(f"only numeric literals allowed, got {node.value!r}")
+        try:
+            number = float(node.value)
+        except OverflowError:
+            raise ValueError(f"numeric literal out of range: {node.value!r}") from None
+        if not math.isfinite(number):
+            raise ValueError(f"numeric literal must be finite, got {node.value!r}")
 
 
 def validate_term(term: str) -> str:
     """Check one term against the grammar; return its stripped form."""
     if not isinstance(term, str) or not term.strip():
         raise ValueError("term must be a non-empty string")
-    if len(term) > MAX_TERM_LEN:
+    clean = term.strip()
+    if len(clean) > MAX_TERM_LEN:
         raise ValueError(f"term longer than {MAX_TERM_LEN} chars: {term!r}")
     try:
-        tree = ast.parse(term, mode="eval")
+        tree = ast.parse(clean, mode="eval")
     except SyntaxError as exc:
         raise ValueError(f"invalid term {term!r}: {exc}") from exc
     _TermValidator().visit(tree)
-    return term.strip()
+    return clean
 
 
 def validate_terms(terms: list[str]) -> list[str]:
-    """Check a term library: 1..MAX_TERMS valid terms."""
+    """Check a term library: 1..MAX_TERMS valid, non-duplicate terms."""
     if not 1 <= len(terms) <= MAX_TERMS:
         raise ValueError(f"need 1..{MAX_TERMS} terms, got {len(terms)}")
-    return [validate_term(t) for t in terms]
+    clean = [validate_term(t) for t in terms]
+    if len(set(clean)) != len(clean):
+        raise ValueError(f"duplicate terms in {clean}")
+    return clean
 
 
+@lru_cache(maxsize=256)
 def compile_term(term: str) -> Callable[[np.ndarray, np.ndarray], np.ndarray]:
-    """Validate a term and return ``f(q, v)`` over NumPy arrays."""
+    """Validate a term and return ``f(q, v)`` over NumPy arrays.
+
+    Cached: the shooter evaluates the same terms thousands of times per fit.
+    """
     clean = validate_term(term)
     code = compile(ast.parse(clean, mode="eval"), "<term>", "eval")
 
     def evaluate(q: np.ndarray, v: np.ndarray) -> np.ndarray:
         namespace: dict[str, Any] = dict(ALLOWED_FUNCS)
         namespace.update({"q": q, "v": v})
-        # Terms like 1/q hit zero crossings routinely; callers check
-        # finiteness (weak_init rejects, the shooter routes around). Warn
-        # nowhere: a warning per integrator step would flood Day-5 logs.
+        # Terms like 1/q hit zero crossings routinely, and huge powers can
+        # overflow: callers check finiteness (weak_init rejects, the shooter
+        # routes around). Warn nowhere: a warning per integrator step would
+        # flood Day-5 logs.
         with np.errstate(divide="ignore", invalid="ignore", over="ignore"):
-            result = eval(code, {"__builtins__": {}}, namespace)  # noqa: S307
-        values = np.asarray(result, dtype=float)
+            try:
+                result = eval(code, {"__builtins__": {}}, namespace)  # noqa: S307
+                values = np.asarray(result, dtype=float)
+            except OverflowError:
+                return np.full(np.shape(q), np.nan)
         if values.ndim == 0:
             return np.full(np.shape(q), float(values))
         if values.shape != np.shape(q):

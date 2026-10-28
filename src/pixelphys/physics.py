@@ -8,7 +8,9 @@ to the observed positions.
 """
 from __future__ import annotations
 
-from dataclasses import dataclass
+import ast
+import time
+from dataclasses import dataclass, field
 
 import numpy as np
 from scipy.integrate import solve_ivp
@@ -33,8 +35,13 @@ except ImportError:  # numpy < 2.0
 BASELINE_TERMS = ["1", "q", "v", "v**2"]
 COEFF_MARGIN = 50.0
 IC_FRACTION = 0.10
-WEAK_FUNCTIONS = 6
+WEAK_FUNCTIONS = 8  # keep >= MAX_TERMS: every valid library gets a weak start
 MIN_WEAK_POINTS = 8
+MAX_NFEV_PER_VAR = 30
+SHOOT_FTOL = 1e-6
+SHOOT_XTOL = 1e-6
+SHOOT_GTOL = 1e-6
+DEFAULT_FIT_BUDGET_S = 60.0
 BLOWUP_RESIDUAL = 1e6
 
 
@@ -44,6 +51,36 @@ class FitResult:
     coeffs: np.ndarray
     q0: float
     v0: float
+    cost: float = field(default=float("inf"))
+    start_index: int = field(default=-1)
+
+
+@dataclass
+class ScoredFit:
+    """Outcome of fitting on a fit window and scoring on held-out data.
+
+    ``ok`` is False (with ``held_nrmse``/``bic`` set to inf and ``error``
+    naming the cause) whenever fitting fails, the rollout explodes, or the
+    budget runs out -- never an exception past this boundary, so the Day-4
+    scientist loop can treat "too slow / exploded" as data, not a crash.
+    """
+
+    ok: bool
+    terms: list[str]
+    coeffs: np.ndarray
+    q0: float
+    v0: float
+    train_rmse: float
+    held_nrmse: float
+    bic: float
+    n_scored: int
+    cost: float
+    start_index: int
+    error: str | None = None
+
+
+class _BudgetExceeded(RuntimeError):
+    """Internal: per-fit wall-clock budget consumed mid-optimization."""
 
 
 def estimate_velocity(t: np.ndarray, q: np.ndarray) -> np.ndarray:
@@ -93,12 +130,13 @@ def coeff_bounds(terms: list[str], t: np.ndarray, q: np.ndarray) -> tuple[np.nda
 def weak_init(terms: list[str], t: np.ndarray, q: np.ndarray) -> np.ndarray:
     """Linear least-squares coefficients via Gaussian test functions.
 
-    Integrates by parts twice: ``int w'' q = sum c_i int w phi_i``,
-    so only a (smoothed) velocity estimate is needed, never ``q''``.
+    Integrates by parts twice: ``int w'' q = sum c_i int w phi_i``, so only
+    a (smoothed) velocity estimate is needed, never ``q''``. Gaussians are
+    not compactly supported, so the identity's boundary terms
+    ``[w'q - wv]`` at the window ends are subtracted explicitly -- without
+    them the drag coefficient comes out ~50% off even on noiseless data.
     """
     clean = validate_terms(list(terms))
-    if len(clean) > WEAK_FUNCTIONS:
-        raise ValueError(f"{len(clean)} terms exceed {WEAK_FUNCTIONS} test functions: underdetermined")
     t_arr = np.asarray(t, dtype=float)
     q_arr = np.asarray(q, dtype=float)
     n = len(t_arr)
@@ -111,41 +149,65 @@ def weak_init(terms: list[str], t: np.ndarray, q: np.ndarray) -> np.ndarray:
     basis = basis_matrix(clean, q_arr, velocity)
     if not np.all(np.isfinite(basis)):
         raise ValueError("non-finite basis values (e.g. division by zero in a term)")
+    step = float(np.median(np.diff(t_arr)))
+    if step <= 0:
+        raise ValueError("time grid must be strictly increasing")
+    # Wide enough to quadrature: sigma below ~3 grid steps makes the
+    # trapezoidal integrals (and hence the start) garbage even on clean data.
+    sigma = max(span / 4.0, 4.0 * step)
     centers = np.linspace(t_arr[0] + 0.15 * span, t_arr[-1] - 0.15 * span, WEAK_FUNCTIONS)
-    sigma = span / WEAK_FUNCTIONS / 2.0
     rows = []
     targets = []
     for center in centers:
         shifted = (t_arr - center) / sigma
         weights = np.exp(-0.5 * shifted**2)
+        slopes = -shifted / sigma * weights
         curvatures = weights * (shifted**2 - 1.0) / sigma**2
         rows.append(_trapz(weights[:, None] * basis, t_arr, axis=0))
-        targets.append(float(_trapz(curvatures * q_arr, t_arr)))
+        edge = ((slopes[-1] * q_arr[-1] - weights[-1] * velocity[-1])
+                - (slopes[0] * q_arr[0] - weights[0] * velocity[0]))
+        targets.append(float(_trapz(curvatures * q_arr, t_arr)) - edge)
     coeffs, _, _, _ = np.linalg.lstsq(np.stack(rows), np.array(targets), rcond=None)
     lower, upper = coeff_bounds(clean, t_arr, q_arr)
     return np.clip(coeffs, lower, upper)
+
+
+def _uses_sign(terms: list[str]) -> bool:
+    """True when a term calls ``sign(...)`` (stiff discontinuity)."""
+    for term in terms:
+        for node in ast.walk(ast.parse(term, mode="eval")):
+            if (isinstance(node, ast.Call) and isinstance(node.func, ast.Name)
+                    and node.func.id == "sign"):
+                return True
+    return False
 
 
 def simulate(terms: list[str], coeffs: np.ndarray,
              t: np.ndarray, state0: tuple[float, float]) -> tuple[np.ndarray, np.ndarray]:
     """Integrate ``q'' = sum c_i phi_i`` from ``(q0, v0)``; ``(q, v)`` at ``t``.
 
-    DOP853 by default; terms with ``sign`` switch to BDF first because the
+    DOP853 by default; terms calling ``sign`` switch to BDF first because the
     discontinuity is stiff. The other method is the fallback either way.
     """
     clean = validate_terms(list(terms))
     gains = np.asarray(coeffs, dtype=float)
     if gains.shape != (len(clean),):
         raise ValueError(f"need {len(clean)} coefficients, got {gains.shape}")
-    basis = [compile_term(s) for s in clean]
+    if not np.all(np.isfinite(gains)):
+        raise ValueError(f"coefficients must be finite, got {gains}")
     t_arr = np.asarray(t, dtype=float)
+    if t_arr.ndim != 1 or len(t_arr) < 2:
+        raise ValueError(f"need a 1-D grid of >= 2 points, got shape {t_arr.shape}")
+    if not bool(np.all(np.diff(t_arr) > 0)):
+        raise ValueError("time grid must be strictly increasing")
+    basis = [compile_term(s) for s in clean]
 
     def rhs(_time: float, state: list[float]) -> list[float]:
         pos, vel = float(state[0]), float(state[1])
         total = sum(g * f(np.asarray(pos), np.asarray(vel)) for g, f in zip(gains, basis))
         return [vel, float(np.asarray(total))]
 
-    stiff_first = any("sign" in s for s in clean)
+    stiff_first = _uses_sign(clean)
     methods = ["BDF", "DOP853"] if stiff_first else ["DOP853", "BDF"]
     for method in methods:
         sol = solve_ivp(rhs, (t_arr[0], t_arr[-1]), list(state0), method=method,
@@ -164,7 +226,7 @@ def _ic_bounds(t: np.ndarray, q: np.ndarray) -> tuple[np.ndarray, np.ndarray, fl
         raise ValueError("time grid must be strictly increasing")
     vel_scale = span_q / step
     q0_guess = float(q_arr[0])
-    v0_guess = float((q_arr[1] - q_arr[0]) / step)
+    v0_guess = float(estimate_velocity(t_arr, q_arr)[0])
     q_spread = IC_FRACTION * span_q
     v_spread = IC_FRACTION * vel_scale
     return (np.array([q0_guess - q_spread, v0_guess - v_spread]),
@@ -172,12 +234,14 @@ def _ic_bounds(t: np.ndarray, q: np.ndarray) -> tuple[np.ndarray, np.ndarray, fl
             q0_guess, v0_guess)
 
 
-def fit_terms(terms: list[str], t: np.ndarray, q: np.ndarray) -> FitResult:
+def fit_terms(terms: list[str], t: np.ndarray, q: np.ndarray,
+              budget_s: float | None = None) -> FitResult:
     """Weak-form start + shooting refinement over coefficients and ``(q0, v0)``.
 
     Three deterministic starts (weak init, zeros, shrunk weak init); the
     lowest-cost converged run wins. Refuses underdetermined fits outright
-    instead of returning silent garbage.
+    instead of returning silent garbage. ``budget_s`` caps wall-clock time;
+    expiry raises ``RuntimeError`` so slowness surfaces instead of hanging.
     """
     clean = validate_terms(list(terms))
     t_arr = np.asarray(t, dtype=float)
@@ -186,6 +250,8 @@ def fit_terms(terms: list[str], t: np.ndarray, q: np.ndarray) -> FitResult:
     if len(t_arr) < n_terms + 2:
         raise ValueError(f"need >= {n_terms + 2} points for {n_terms} terms + ICs, "
                          f"got {len(t_arr)}")
+    if not np.all(np.isfinite(basis_matrix(clean, q_arr, estimate_velocity(t_arr, q_arr)))):
+        raise ValueError(f"non-finite basis values for terms {clean}")
     try:
         weak = weak_init(clean, t_arr, q_arr)
     except ValueError:
@@ -199,8 +265,11 @@ def fit_terms(terms: list[str], t: np.ndarray, q: np.ndarray) -> FitResult:
         np.concatenate([np.zeros(n_terms), [q0_guess, v0_guess]]),
         np.concatenate([0.5 * weak, [q0_guess, v0_guess]]),
     ]
+    deadline = None if budget_s is None else time.monotonic() + budget_s
 
     def residual(params: np.ndarray) -> np.ndarray:
+        if deadline is not None and time.monotonic() > deadline:
+            raise _BudgetExceeded(f"fit budget of {budget_s}s exceeded")
         try:
             pred, _ = simulate(clean, params[:n_terms], t_arr,
                                (float(params[n_terms]), float(params[n_terms + 1])))
@@ -210,15 +279,115 @@ def fit_terms(terms: list[str], t: np.ndarray, q: np.ndarray) -> FitResult:
 
     best: FitResult | None = None
     best_cost = float("inf")
-    for start in starts:
-        result = least_squares(residual, start, bounds=(lower, upper))
-        if result.cost < best_cost and np.all(np.isfinite(result.x)):
-            best_cost = result.cost
-            best = FitResult(terms=clean, coeffs=result.x[:n_terms],
-                             q0=float(result.x[n_terms]), v0=float(result.x[n_terms + 1]))
+    max_nfev = MAX_NFEV_PER_VAR * (n_terms + 2)
+    try:
+        for index, start in enumerate(starts):
+            result = least_squares(residual, start, bounds=(lower, upper),
+                                   max_nfev=max_nfev, ftol=SHOOT_FTOL,
+                                   xtol=SHOOT_XTOL, gtol=SHOOT_GTOL)
+            if (result.success and np.all(np.isfinite(result.x))
+                    and np.isfinite(result.cost) and result.cost < best_cost):
+                best_cost = result.cost
+                best = FitResult(terms=clean, coeffs=result.x[:n_terms],
+                                 q0=float(result.x[n_terms]),
+                                 v0=float(result.x[n_terms + 1]),
+                                 cost=float(result.cost), start_index=index)
+    except _BudgetExceeded as exc:
+        raise RuntimeError(str(exc)) from None
     if best is None:
         raise RuntimeError(f"shooting fit failed for terms {clean}")
     return best
+
+
+def score_candidate(terms: list[str], t_fit: np.ndarray, q_fit: np.ndarray,
+                    t_held: np.ndarray, q_held: np.ndarray,
+                    horizon_s: float = 2.0,
+                    budget_s: float = DEFAULT_FIT_BUDGET_S) -> ScoredFit:
+    """Fit on the fit window, score the continuation on held-out data.
+
+    The scored horizon is min(``horizon_s``, held data). BIC counts
+    coefficients plus the 2 fitted initial conditions. Never raises for
+    model/data problems: failure (bad fit, exploding rollout, exhausted
+    budget) returns ``ok=False`` with ``held_nrmse``/``bic`` set to inf and
+    ``error`` naming the cause, so the scientist loop treats it as data.
+    """
+    t_fit_arr = np.asarray(t_fit, dtype=float)
+    q_fit_arr = np.asarray(q_fit, dtype=float)
+    t_held_arr = np.asarray(t_held, dtype=float)
+    q_held_arr = np.asarray(q_held, dtype=float)
+
+    def failed(clean: list[str], error: str) -> ScoredFit:
+        return ScoredFit(ok=False, terms=clean,
+                         coeffs=np.full(len(clean), np.nan),
+                         q0=float("nan"), v0=float("nan"),
+                         train_rmse=float("inf"), held_nrmse=float("inf"),
+                         bic=float("inf"), n_scored=0,
+                         cost=float("inf"), start_index=-1, error=error)
+
+    try:
+        clean = validate_terms(list(terms))
+        if len(t_held_arr) < 1:
+            return failed(clean, "no held-out points to score")
+        fit = fit_terms(clean, t_fit_arr, q_fit_arr, budget_s=budget_s)
+        horizon_end = float(t_held_arr[0]) + horizon_s
+        scored = min(max(int(np.searchsorted(t_held_arr, horizon_end)), 1),
+                     len(t_held_arr))
+        grid = np.concatenate([t_fit_arr, t_held_arr])
+        full, _ = simulate(fit.terms, fit.coeffs, grid, (fit.q0, fit.v0))
+        held_pred = full[len(t_fit_arr):len(t_fit_arr) + scored]
+        if not np.all(np.isfinite(held_pred)):
+            return failed(clean, "rollout went non-finite on held-out data")
+        train_pred, _ = simulate(fit.terms, fit.coeffs, t_fit_arr, (fit.q0, fit.v0))
+        residuals = train_pred - q_fit_arr
+        rss = float(np.sum(residuals**2))
+        return ScoredFit(ok=True, terms=clean, coeffs=fit.coeffs,
+                         q0=fit.q0, v0=fit.v0,
+                         train_rmse=float(np.sqrt(np.mean(residuals**2))),
+                         held_nrmse=nrmse(held_pred, q_held_arr[:scored]),
+                         bic=bic(len(t_fit_arr), rss, len(clean) + 2),
+                         n_scored=scored, cost=fit.cost,
+                         start_index=fit.start_index)
+    except (ValueError, RuntimeError) as exc:
+        clean = locals().get("clean", list(terms))
+        return failed(clean, f"{type(exc).__name__}: {exc}")
+
+
+def rollout_score(terms: list[str], coeffs: np.ndarray,
+                  t: np.ndarray, q: np.ndarray,
+                  horizon_s: float = 2.0, ic_points: int = 3) -> tuple[float, int]:
+    """Score fixed coefficients on a new clip from refit initial conditions.
+
+    Cross-take generalization: coefficients transfer, initial conditions do
+    not, so the ICs are refit on the clip's first ``ic_points`` samples and
+    only the remaining points are scored (up to ``horizon_s``). Refitting
+    beats anchoring on an edge-smoothed gradient, whose error otherwise
+    dominates the ranking. Returns ``(nrmse, n_scored)``; ``inf`` on failure.
+    """
+    t_arr = np.asarray(t, dtype=float)
+    q_arr = np.asarray(q, dtype=float)
+    try:
+        clean = validate_terms(list(terms))
+        gains = np.asarray(coeffs, dtype=float)
+        if len(t_arr) < 2 or gains.shape != (len(clean),):
+            return float("inf"), 0
+        n_ic = min(ic_points, len(t_arr) - 1)
+
+        def ic_residual(state: np.ndarray) -> np.ndarray:
+            pred, _ = simulate(clean, gains, t_arr[:n_ic],
+                               (float(state[0]), float(state[1])))
+            return pred - q_arr[:n_ic]
+
+        anchor = (float(q_arr[0]), float(estimate_velocity(t_arr, q_arr)[0]))
+        ic = least_squares(ic_residual, np.array(anchor)).x
+        tail_t, tail_q = t_arr[n_ic:], q_arr[n_ic:]
+        scored = min(max(int(np.searchsorted(tail_t, tail_t[0] + horizon_s)), 1),
+                     len(tail_t))
+        pred, _ = simulate(clean, gains, tail_t[:scored], (float(ic[0]), float(ic[1])))
+        if not np.all(np.isfinite(pred)):
+            return float("inf"), scored
+        return nrmse(pred, tail_q[:scored]), scored
+    except (ValueError, RuntimeError):
+        return float("inf"), 0
 
 
 def nrmse(pred: np.ndarray, true: np.ndarray) -> float:

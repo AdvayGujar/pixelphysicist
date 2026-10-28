@@ -34,6 +34,7 @@ def test_sign_term_integrates_without_blowup() -> None:
     assert v[-1] < v[0]  # Coulomb-style damping removes speed
 
 
+@pytest.mark.slow
 def test_fit_recovers_synthetic_drag_truth() -> None:
     truth = load_synthetic_truth()
     t = np.array(truth["t"])
@@ -44,6 +45,7 @@ def test_fit_recovers_synthetic_drag_truth() -> None:
     assert fit.coeffs[1] == pytest.approx(-truth["params"]["drag"], rel=0.1)
 
 
+@pytest.mark.slow
 def test_baseline_fits_worse_than_true_model_on_synthetic() -> None:
     # Rollouts continue each model's own fitted trajectory from its fitted
     # (q0, v0): restarting from a data-gradient anchor injects edge-smoothing
@@ -60,6 +62,47 @@ def test_baseline_fits_worse_than_true_model_on_synthetic() -> None:
     nrmse_base = physics.nrmse(physics.simulate(base.terms, base.coeffs, t, (base.q0, base.v0))[0][cut:], q_held)
     assert nrmse_full < 1e-6
     assert nrmse_base > 0.01
+
+
+def test_simulate_validates_time_grid() -> None:
+    with pytest.raises(ValueError, match=">= 2 points"):
+        physics.simulate(["1"], np.array([-9.81]), np.array([0.0]), (0.0, 0.0))
+    with pytest.raises(ValueError, match=">= 2 points"):
+        physics.simulate(["1"], np.array([-9.81]), np.array([]), (0.0, 0.0))
+    with pytest.raises(ValueError, match="strictly increasing"):
+        physics.simulate(["1"], np.array([-9.81]), np.array([0.2, 0.1, 0.0]), (0.0, 0.0))
+    with pytest.raises(ValueError, match="finite"):
+        physics.simulate(["1"], np.array([np.inf]), np.array([0.0, 0.1]), (0.0, 0.0))
+
+
+@pytest.mark.slow
+def test_score_candidate_reports_success() -> None:
+    import math
+
+    truth = load_synthetic_truth()
+    t = np.array(truth["t"])
+    q = np.array(truth["q"])
+    cut = int(len(t) * 0.6)
+    scored = physics.score_candidate(["1", "abs(v)*v"], t[:cut], q[:cut], t[cut:], q[cut:])
+    assert scored.ok and scored.error is None
+    assert scored.held_nrmse < 1e-6
+    assert scored.n_scored == len(t) - cut  # horizon exceeds the tail here
+    n, k = cut, 2 + 2  # coefficients + 2 initial conditions
+    rss = scored.train_rmse**2 * n
+    assert scored.bic == pytest.approx(n * math.log(rss / n) + k * math.log(n))
+
+
+def test_score_candidate_converts_failure_to_data() -> None:
+    truth = load_synthetic_truth()
+    t = np.array(truth["t"])
+    q = np.array(truth["q"])
+    cut = int(len(t) * 0.6)
+    timed_out = physics.score_candidate(["1", "abs(v)*v"], t[:cut], q[:cut],
+                                        t[cut:], q[cut:], budget_s=0.0)
+    assert not timed_out.ok and "budget" in timed_out.error
+    assert timed_out.held_nrmse == float("inf")
+    empty = physics.score_candidate(["1"], t[:cut], q[:cut], t[:0], q[:0])
+    assert not empty.ok and "held-out" in empty.error
 
 
 def test_nrmse_perfect_zero_and_degenerate_guards() -> None:
@@ -85,6 +128,7 @@ def test_fit_terms_rejects_empty_library() -> None:
         physics.fit_terms([], np.array([0.0, 0.1, 0.2]), np.array([0.0, 0.1, 0.2]))
 
 
+@pytest.mark.slow
 def test_fit_recovers_truth_in_pixel_units() -> None:
     """Scale-aware bounds: pixel-scale gravity (~1e4) must not clip.
 
@@ -101,11 +145,15 @@ def test_fit_recovers_truth_in_pixel_units() -> None:
     assert fit.coeffs[1] == pytest.approx(-truth["params"]["drag"] / px_per_m, rel=0.2)
 
 
-def test_weak_init_rejects_underdetermined_library() -> None:
-    t = np.linspace(0.0, 1.0, 20)
-    q = t**2
-    with pytest.raises(ValueError, match="underdetermined"):
-        physics.weak_init(["1", "q", "v", "q**2", "v**2", "v**3", "q*v"], t, q)
+def test_weak_init_estimates_synthetic_truth() -> None:
+    """Boundary-corrected weak form lands near truth on clean data."""
+    truth = load_synthetic_truth()
+    t = np.array(truth["t"])
+    q = np.array(truth["q"])
+    cut = int(len(t) * 0.6)
+    weak = physics.weak_init(["1", "abs(v)*v"], t[:cut], q[:cut])
+    assert weak[0] == pytest.approx(-truth["params"]["gravity"], rel=0.1)
+    assert weak[1] == pytest.approx(-truth["params"]["drag"], rel=0.2)
 
 
 def test_fit_terms_rejects_underdetermined_fit() -> None:
