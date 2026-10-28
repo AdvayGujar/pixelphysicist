@@ -29,7 +29,7 @@ and one static camera, in two scientist modes:
   `x, y, vx, vy`; Spark looks for drag coupled through the speed, e.g.
   `sqrt(vx**2+vy**2)*vx`, with the same coefficient expected on both axes.
 
-## Current state (Day 3 done, Day 4 in progress)
+## Current state (Day 5 done: ablation collected, G5 RED)
 
 Built and verified:
 
@@ -48,11 +48,49 @@ Built and verified:
   exactly. After an audit noted the gate runs fit the menu answer before
   inspecting any residual, the loop now attaches the baseline residual
   plots up front so the first fit diagnoses seen evidence
-  (`results/day4_diag.json`, 1 verification run per mode). The real-clip
-  ablation is Day-5 work.
+  (`results/day4_diag.json`, 1 verification run per mode).
+- Ablation: 12 runs (3 baselines + 9 Spark loops at `low` effort, all from
+  tracked observations) via `scripts/run_ablation.py` — see the table
+  below. G5 is RED: the hero claim holds, the negative control and the
+  exact-term recovery do not.
 
 Not built yet: the one-command `pixelphys run …` wiring, the report and
-ghost-overlay renderer, the ablation table, and the demo video.
+ghost-overlay renderer, and the demo video.
+
+## Ablation (Day 5, `results/ablation.csv`)
+
+Split protocol throughout: fit the first 60%, score the next 2 s
+(min(2 s, clean tail)) by continuing each model's own fitted trajectory.
+B = baseline + Spark (3 repeats, `reasoning_effort="low"`); A = baseline.
+Mean B vs A; "beat" = lower held-out NRMSE.
+
+| Clip | A held-NRMSE | B held-NRMSE (mean of 3) | Beats A | Terms found | Cost |
+|---|---|---|---|---|---|
+| H hero (tossed ball, 20 pts) | 0.732 | 0.399 (0.490 / 0.187 / 0.519) | 3/3 | drag family (`abs(v)*v` ± `q`, `sign(v)`) | ~$0.045 |
+| N negative control (pendulum, 215 pts) | 0.041 | 0.037 (0.037 / 0.037 / 0.037) | 3/3 (worse: see below) | spurious `v**3` + `sign(v)` every repeat | ~$0.098 |
+| S synthetic tracked (30 pts) | 0.062 | 0.005 (0.004 / 0.008 / 0.004) | 3/3 | true `abs(v)*v` 1/3; `q*v` distractor 2/3 | ~$0.074 |
+
+Total: $0.22 for 9 Spark runs. Gate: H GREEN (3/3 beat, −46% mean),
+N RED (Spark adds terms in 3/3; 10.6% mean gap, outside the 5% band),
+S RED on exact recovery (1/3), GREEN on beating the baseline (3/3,
+−91% mean).
+
+**Honest limits (read before citing any number above).**
+The numeric fitting is classical; Spark proposes structure only. The
+hero result is real but narrow: on 20-point arcs the drag term beats the
+*baseline* 4× yet still loses to gravity-only (0.065) on real data, so no
+drag-on-real-arcs claim is made — the discovery mechanism is proven on
+synthetic truth (G4 5/5 exact), not on phone footage. The negative
+control failed: Spark added cubic/Coulomb terms that shave ~10% off the
+pendulum's held NRMSE while *worsening* train RMSE (12.9–14.2 vs 10.9)
+and BIC (689–714 vs 646) — held-luck overfitting the 2%-NRMSE-or-BIC
+submit guard accepts. Requiring NRMSE *and* BIC agreement is explicit
+future work, not implemented. On tracked (vs truth-array) synthetic,
+exact recovery drops to 1/3: the full-library-plus-drag fit scores worse
+than the baseline (0.070 vs 0.062), so Spark usually never sparsifies to
+the true 2-term form, and a correlated `q*v` distractor out-predicts the
+truth on this noisy realization (BIC still prefers the truth, −65.6 vs
+−61.0). One object, one static camera, short 1-DOF clips only.
 
 ## Seeing the equation (report visual, lands with the renderer)
 
@@ -65,7 +103,7 @@ curve peels away from the held-out points, the graph says so; that is the
 validation, not a decoration. (The residual plots Spark reads during a run
 already exist; the combined equation graph is part of the Day-6 report.)
 
-## Still planned (post-freeze)
+## Still planned (post-freeze; gated on G5 — currently RED, so cut)
 
 A one-go projectile flow — finished throw clip in, fitted equations,
 equation graph, report, and a 3-D replay ball re-flying the *fitted*

@@ -1,0 +1,347 @@
+{
+ "date": "2026-10-28",
+ "effort": "low",
+ "repeats": 3,
+ "horizon": "min(2 s, clean tail)",
+ "total_cost_usd": 0.217561,
+ "crashed": "",
+ "gates": {
+  "H": {
+   "a_held": 0.7324369618049869,
+   "b_mean": 0.3985231810388316,
+   "improvement": 0.4558942245941168,
+   "n_beat": "3/3",
+   "gate": "GREEN"
+  },
+  "N": {
+   "a_held": 0.04128793329098349,
+   "b_mean": 0.03691439675057082,
+   "rel_gap": 0.10592771766001105,
+   "n_clean": "0/3",
+   "gate": "RED"
+  },
+  "S": {
+   "a_held": 0.06220275838026542,
+   "b_mean": 0.005447356944987952,
+   "n_correct": "1/3",
+   "gate": "RED"
+  }
+ },
+ "g5": "RED",
+ "rows": [
+  {
+   "clip": "S",
+   "repeat": 0,
+   "mode": "A",
+   "submitted": true,
+   "terms": [
+    "1",
+    "q",
+    "v",
+    "v**2"
+   ],
+   "coeffs": [
+    -282.18759332962543,
+    -7.179087308760489,
+    -0.35860707145004866,
+    -0.0022706606077901583
+   ],
+   "held_nrmse": 0.06220275838026542,
+   "bic": -64.81463110311726,
+   "train_rmse": 0.10206605820617158,
+   "rounds": 0,
+   "cost_usd": 0.0,
+   "stopped": "baseline (condition A)",
+   "explanation": "baseline library [1, q, v, v**2], no Spark",
+   "baseline_held_nrmse": 0.06220275838026542,
+   "baseline_bic": -64.81463110311726
+  },
+  {
+   "clip": "S",
+   "repeat": 1,
+   "mode": "B",
+   "submitted": true,
+   "terms": [
+    "1",
+    "q",
+    "v",
+    "q*v"
+   ],
+   "coeffs": [
+    -2846.1556895390386,
+    1.4836652416160718,
+    -1.9497321691520157,
+    0.005294978683544601
+   ],
+   "held_nrmse": 0.003947790173021718,
+   "bic": -61.029017499515135,
+   "train_rmse": 0.11338353271192166,
+   "rounds": 3,
+   "cost_usd": 0.019589,
+   "stopped": "submitted",
+   "explanation": "Replaces unsigned v**2 (which cannot oppose motion in both directions) with q*v position-dependent damping. Coefficients: 1=gravity/bias accel, q=linear stiffness per mass, v=viscous drag per mass (1/time), q*v=damping gradient per mass (1/(length*time)). Model-4 improves held-out NRMSE by ~93.7% over baseline (0.0039 vs 0.0622), showing the velocity loss depends on position, not unsigned quadratic drag.",
+   "baseline_held_nrmse": 0.06220275838026542,
+   "baseline_bic": -64.81463110311726
+  },
+  {
+   "clip": "S",
+   "repeat": 2,
+   "mode": "B",
+   "submitted": true,
+   "terms": [
+    "1",
+    "abs(v)*v"
+   ],
+   "coeffs": [
+    -2432.181716007791,
+    -0.0014591354187326727
+   ],
+   "held_nrmse": 0.008446490488920417,
+   "bic": -65.56312834150981,
+   "train_rmse": 0.11737862863652405,
+   "rounds": 4,
+   "cost_usd": 0.029575,
+   "stopped": "submitted",
+   "explanation": "Sparse projectile with quadratic drag: constant 1 coefficient is gravitational/bias acceleration, abs(v)*v coefficient is quadratic drag per unit mass (1/length). Unsigned v**2 in baseline cannot oppose motion in both directions; signed abs(v)*v does. 2-term model improves held-out NRMSE 86% and beats baseline BIC (-65.6 vs -64.8), so extra q,v terms were overfit.",
+   "baseline_held_nrmse": 0.06220275838026542,
+   "baseline_bic": -64.81463110311726
+  },
+  {
+   "clip": "S",
+   "repeat": 3,
+   "mode": "B",
+   "submitted": true,
+   "terms": [
+    "1",
+    "q",
+    "v",
+    "q*v"
+   ],
+   "coeffs": [
+    -2846.1556895390386,
+    1.4836652416160718,
+    -1.9497321691520157,
+    0.005294978683544601
+   ],
+   "held_nrmse": 0.003947790173021718,
+   "bic": -61.029017499515135,
+   "train_rmse": 0.11338353271192166,
+   "rounds": 4,
+   "cost_usd": 0.025255,
+   "stopped": "submitted",
+   "explanation": "Model replaces wrong unsigned v**2 drag with position-dependent damping q*v: q'' = c0 + k*q + c*v + beta*q*v. c0 is gravity/bias accel, k linear stiffness, c viscous damping per unit mass, beta gradient of damping with displacement (variable-orifice / geometry-dependent damping). Held NRMSE improves 93.6% over baseline (0.0039 vs 0.062), showing residual scaled with q*v not v^2.",
+   "baseline_held_nrmse": 0.06220275838026542,
+   "baseline_bic": -64.81463110311726
+  },
+  {
+   "clip": "H",
+   "repeat": 0,
+   "mode": "A",
+   "submitted": true,
+   "terms": [
+    "1",
+    "q",
+    "v",
+    "v**2"
+   ],
+   "coeffs": [
+    168410.6526834861,
+    -368.8915017542155,
+    -0.7449894211271315,
+    -0.012990595607124088
+   ],
+   "held_nrmse": 0.7324369618049869,
+   "bic": 18.58344287324811,
+   "train_rmse": 1.1654222378445156,
+   "rounds": 0,
+   "cost_usd": 0.0,
+   "stopped": "baseline (condition A)",
+   "explanation": "baseline library [1, q, v, v**2], no Spark",
+   "baseline_held_nrmse": 0.7324369618049869,
+   "baseline_bic": 18.58344287324811
+  },
+  {
+   "clip": "H",
+   "repeat": 1,
+   "mode": "B",
+   "submitted": true,
+   "terms": [
+    "1",
+    "q",
+    "abs(v)*v"
+   ],
+   "coeffs": [
+    32311.0496504248,
+    -94.99064668768366,
+    -0.0029168460817778504
+   ],
+   "held_nrmse": 0.4898774689793389,
+   "bic": 34.353681613594176,
+   "train_rmse": 2.4935677472952906,
+   "rounds": 2,
+   "cost_usd": 0.012067,
+   "stopped": "submitted",
+   "explanation": "Model replaces unsigned v**2 with directed quadratic drag abs(v)*v. q'' = c0 + k*q + cd*abs(v)*v: c0 is static bias/gravity per mass, k (coeff of q) is linear stiffness per mass (negative restoring), cd (coeff of abs(v)*v, ~ -0.0029 1/length) is quadratic drag per unit mass opposing motion in both directions. Baseline v**2 cannot change sign with v, so it biases one direction; directed abs(v)*v fixes this, cutting held-out NRMSE by ~33% (0.73->0.49).",
+   "baseline_held_nrmse": 0.7324369618049869,
+   "baseline_bic": 18.58344287324811
+  },
+  {
+   "clip": "H",
+   "repeat": 2,
+   "mode": "B",
+   "submitted": true,
+   "terms": [
+    "1",
+    "abs(v)*v"
+   ],
+   "coeffs": [
+    -13547.559339228234,
+    0.0003560079297346984
+   ],
+   "held_nrmse": 0.18723623067529227,
+   "bic": 39.3441804853021,
+   "train_rmse": 3.4048120684409477,
+   "rounds": 3,
+   "cost_usd": 0.019252,
+   "stopped": "submitted",
+   "explanation": "Replaced unsigned v**2 with abs(v)*v quadratic drag opposing motion both directions; coefficient is drag per unit mass (1/length). Held NRMSE improves 74% over baseline (0.187 vs 0.732), showing speed-squared drag dominates.",
+   "baseline_held_nrmse": 0.7324369618049869,
+   "baseline_bic": 18.58344287324811
+  },
+  {
+   "clip": "H",
+   "repeat": 3,
+   "mode": "B",
+   "submitted": true,
+   "terms": [
+    "1",
+    "q",
+    "v",
+    "sign(v)"
+   ],
+   "coeffs": [
+    48703.41617019192,
+    -132.54538845642972,
+    -13.16447530609974,
+    9749.123979678332
+   ],
+   "held_nrmse": 0.5184558434618637,
+   "bic": 22.244736527121354,
+   "train_rmse": 1.3574899364695694,
+   "rounds": 2,
+   "cost_usd": 0.013438,
+   "stopped": "submitted",
+   "explanation": "Model replaces unsigned v**2 with sign(v) Coulomb dry friction plus 1 (gravity bias), q (linear stiffness), v (viscous drag per unit mass). Held NRMSE improves 29% over baseline (0.518 vs 0.732), showing residual offset flipping with velocity direction is dry friction, which unsigned v**2 cannot express.",
+   "baseline_held_nrmse": 0.7324369618049869,
+   "baseline_bic": 18.58344287324811
+  },
+  {
+   "clip": "N",
+   "repeat": 0,
+   "mode": "A",
+   "submitted": true,
+   "terms": [
+    "1",
+    "q",
+    "v",
+    "v**2"
+   ],
+   "coeffs": [
+    369.373932591932,
+    -11.510255720211484,
+    0.01480761856525235,
+    -0.0005679383130809369
+   ],
+   "held_nrmse": 0.04128793329098349,
+   "bic": 645.7797087862409,
+   "train_rmse": 10.913529236833847,
+   "rounds": 0,
+   "cost_usd": 0.0,
+   "stopped": "baseline (condition A)",
+   "explanation": "baseline library [1, q, v, v**2], no Spark",
+   "baseline_held_nrmse": 0.04128793329098349,
+   "baseline_bic": 645.7797087862409
+  },
+  {
+   "clip": "N",
+   "repeat": 1,
+   "mode": "B",
+   "submitted": false,
+   "terms": [
+    "1",
+    "q",
+    "v",
+    "v**3"
+   ],
+   "coeffs": [
+    21.351823069722684,
+    -11.37446706647975,
+    0.14037172055073588,
+    -1.5769871786434897e-07
+   ],
+   "held_nrmse": 0.03716271124899527,
+   "bic": 689.2577905080836,
+   "train_rmse": 12.916724319288248,
+   "rounds": 5,
+   "cost_usd": 0.030162,
+   "stopped": "held-out NRMSE improved < 2% for 2 rounds; submitted best-so-far model as fallback",
+   "explanation": "loop ended without submit_model; best model by held-out NRMSE",
+   "baseline_held_nrmse": 0.04128793329098349,
+   "baseline_bic": 645.7797087862409
+  },
+  {
+   "clip": "N",
+   "repeat": 2,
+   "mode": "B",
+   "submitted": false,
+   "terms": [
+    "1",
+    "q",
+    "sign(v)",
+    "v**3"
+   ],
+   "coeffs": [
+    -3.4274568317213556,
+    -11.936828168683633,
+    872.7198138217789,
+    -1.0520665092689478e-06
+   ],
+   "held_nrmse": 0.0367902395013586,
+   "bic": 713.6549877796972,
+   "train_rmse": 14.19778136746781,
+   "rounds": 5,
+   "cost_usd": 0.040083,
+   "stopped": "held-out NRMSE improved < 2% for 2 rounds; submitted best-so-far model as fallback",
+   "explanation": "loop ended without submit_model; best model by held-out NRMSE",
+   "baseline_held_nrmse": 0.04128793329098349,
+   "baseline_bic": 645.7797087862409
+  },
+  {
+   "clip": "N",
+   "repeat": 3,
+   "mode": "B",
+   "submitted": true,
+   "terms": [
+    "1",
+    "q",
+    "sign(v)",
+    "v**3"
+   ],
+   "coeffs": [
+    -3.4274568317213556,
+    -11.936828168683633,
+    872.7198138217789,
+    -1.0520665092689478e-06
+   ],
+   "held_nrmse": 0.0367902395013586,
+   "bic": 713.6549877796972,
+   "train_rmse": 14.19778136746781,
+   "rounds": 4,
+   "cost_usd": 0.02814,
+   "stopped": "submitted",
+   "explanation": "Oscillator with gravity offset (1), linear restoring stiffness (q), Coulomb dry friction sign(v) coefficient = friction force per unit mass, and cubic damping v**3 coefficient = high-speed drag. Replaces unsigned v**2 which cannot oppose bidirectional motion; cubic + Coulomb capture velocity-dependent dissipation seen in vs-v residuals, improving held-out NRMSE ~10.9% over baseline.",
+   "baseline_held_nrmse": 0.04128793329098349,
+   "baseline_bic": 645.7797087862409
+  }
+ ]
+}
