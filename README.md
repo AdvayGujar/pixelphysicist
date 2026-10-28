@@ -45,8 +45,11 @@ Built and verified:
   `submit_model` with a beat-the-baseline guard) is built in both modes
   and both 5-run synthetic gates are green (G4/G4b 5/5, `results/day4.json`
   via `scripts/run_day4.py`): the hidden drag coefficients are recovered
-  exactly, with the baseline residual plots attached up front so the first
-  fit is a diagnosis of seen evidence. The real-clip ablation is Day-5 work.
+  exactly. After an audit noted the gate runs fit the menu answer before
+  inspecting any residual, the loop now attaches the baseline residual
+  plots up front so the first fit diagnoses seen evidence
+  (`results/day4_diag.json`, 1 verification run per mode). The real-clip
+  ablation is Day-5 work.
 
 Not built yet: the one-command `pixelphys run …` wiring, the report and
 ghost-overlay renderer, the ablation table, and the demo video.

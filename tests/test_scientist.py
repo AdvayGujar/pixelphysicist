@@ -97,6 +97,10 @@ def test_loop_scripted_spark_finds_drag(tmp_path) -> None:  # type: ignore[no-un
     assert result.final_model_id == "model-1"
     assert result.cost_usd > 0
     assert result.stopped_reason == "submitted"
+    assert result.held_nrmse is not None and result.held_nrmse < 0.01
+    assert result.bic is not None and result.train_rmse is not None
+    assert result.transcript[0].get("baseline_plots"), \
+        "opening message must attach baseline residual evidence"
 
 
 def test_loop_fallback_submits_best_when_never_submitted(tmp_path) -> None:  # type: ignore[no-untyped-def]

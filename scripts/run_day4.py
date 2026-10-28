@@ -99,6 +99,40 @@ def run_g4b(n_runs: int, effort: str, prefix: str) -> list[dict]:
     return rows
 
 
+VERIFY_NOTE = ("Baseline-first verification run: baseline residuals attached "
+               "up front (Day-4 audit finding 1). Not a gate (gates need "
+               ">= 3/5); rows are runner output, byte-for-byte.")
+
+
+def build_summary(g4: list[dict], g4b: list[dict], effort: str,
+                  verify: bool = False) -> dict:
+    total_cost = round(sum(r["cost_usd"] for r in (g4 + g4b)), 6)
+    if verify:
+        for r in g4 + g4b:
+            r["gate_label"] = ("verification-pass"
+                               if r["correct_term"] else "verification-fail")
+        return {
+            "date": date.today().isoformat(),
+            "effort": effort,
+            "mode": "verification",
+            "note": VERIFY_NOTE,
+            "g4_pass": f"{sum(r['correct_term'] for r in g4)}/{len(g4)}",
+            "g4b_pass": f"{sum(r['correct_term'] for r in g4b)}/{len(g4b)}",
+            "total_cost_usd": total_cost,
+            "rows": g4 + g4b,
+        }
+    return {
+        "date": date.today().isoformat(),
+        "effort": effort,
+        "g4_pass": f"{sum(r['correct_term'] for r in g4)}/{len(g4)}" if g4 else "skipped",
+        "g4b_pass": f"{sum(r['correct_term'] for r in g4b)}/{len(g4b)}" if g4b else "skipped",
+        "g4_gate": "GREEN" if g4 and sum(r["correct_term"] for r in g4) >= 3 else ("skipped" if not g4 else "RED"),
+        "g4b_gate": "GREEN" if g4b and sum(r["correct_term"] for r in g4b) >= 3 else ("skipped" if not g4b else "RED"),
+        "total_cost_usd": total_cost,
+        "rows": g4 + g4b,
+    }
+
+
 def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(description="Run Day-4 live gates.")
     parser.add_argument("--runs", type=int, default=5)
@@ -107,29 +141,25 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--prefix", default="day4")
     parser.add_argument("--skip-g4", action="store_true")
     parser.add_argument("--skip-g4b", action="store_true")
+    parser.add_argument("--verify", action="store_true",
+                        help="verification mode: no gate thresholds, rows "
+                             "labelled verification-pass/fail")
     args = parser.parse_args(argv)
 
-    all_rows: list[dict] = []
     g4 = [] if args.skip_g4 else run_g4(args.runs, args.effort, args.prefix)
     g4b = [] if args.skip_g4b else run_g4b(args.runs, args.effort, args.prefix)
-    all_rows = g4 + g4b
-    total_cost = round(sum(r["cost_usd"] for r in all_rows), 6)
-    summary = {
-        "date": date.today().isoformat(),
-        "effort": args.effort,
-        "g4_pass": f"{sum(r['correct_term'] for r in g4)}/{len(g4)}" if g4 else "skipped",
-        "g4b_pass": f"{sum(r['correct_term'] for r in g4b)}/{len(g4b)}" if g4b else "skipped",
-        "g4_gate": "GREEN" if g4 and sum(r["correct_term"] for r in g4) >= 3 else ("skipped" if not g4 else "RED"),
-        "g4b_gate": "GREEN" if g4b and sum(r["correct_term"] for r in g4b) >= 3 else ("skipped" if not g4b else "RED"),
-        "total_cost_usd": total_cost,
-        "rows": all_rows,
-    }
+    summary = build_summary(g4, g4b, args.effort, verify=args.verify)
     out = Path(args.out)
     out.parent.mkdir(parents=True, exist_ok=True)
     out.write_text(json.dumps(summary, indent=1))
+    if args.verify:
+        print(f"verification: G4 {summary['g4_pass']}, "
+              f"G4b {summary['g4b_pass']}; "
+              f"total ${summary['total_cost_usd']:.4f}; wrote {out}")
+        return 0 if all(r["correct_term"] for r in g4 + g4b) else 1
     print(f"G4: {summary['g4_pass']} -> {summary['g4_gate']}; "
           f"G4b: {summary['g4b_pass']} -> {summary['g4b_gate']}; "
-          f"total ${total_cost:.4f}; wrote {out}")
+          f"total ${summary['total_cost_usd']:.4f}; wrote {out}")
     return 0 if (summary["g4_gate"] in ("GREEN", "skipped")
                  and summary["g4b_gate"] in ("GREEN", "skipped")) else 1
 

@@ -21,8 +21,14 @@ def clean_observations(obs: list[Observation]) -> list[Observation]:
     if len(obs) < MIN_POINTS:
         raise ValueError(f"need >= {MIN_POINTS} observations, got {len(obs)}")
     areas = np.array([o.mask_area for o in obs])
-    keep = np.abs(areas - areas.mean()) <= 3.0 * areas.std()
-    cleaned = [o for o, k in zip(obs, keep) if k]
+    if areas.mean() > 0 and areas.std() > 0.01 * areas.mean():
+        keep = np.abs(areas - areas.mean()) <= 3.0 * areas.std()
+        cleaned = [o for o, k in zip(obs, keep) if k]
+    else:
+        # Near-constant areas carry no outlier signal (e.g. a synthetic dot
+        # whose rasterization wobbles by <1%): a 3σ cut would flag pure
+        # discretization noise. Keep all; real clips always vary more.
+        cleaned = list(obs)
     if len(cleaned) < MIN_POINTS:
         raise ValueError(f"cleaning left {len(cleaned)} < {MIN_POINTS} observations")
     return cleaned

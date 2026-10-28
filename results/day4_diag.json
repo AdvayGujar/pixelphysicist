@@ -1,10 +1,10 @@
 {
  "date": "2026-10-28",
  "effort": "low",
+ "mode": "verification",
+ "note": "Baseline-first verification run: baseline residuals attached up front (Day-4 audit finding 1). Not a gate (gates need >= 3/5); rows are runner output, byte-for-byte.",
  "g4_pass": "1/1",
  "g4b_pass": "1/1",
- "g4_gate": "verification",
- "g4b_gate": "verification",
  "total_cost_usd": 0.032127,
  "rows": [
   {
@@ -63,6 +63,5 @@
    "explanation": "Quadratic drag with shared coefficient: x''=-k|v|vx, y''=-g-k|v|vy. Fitted k~0.06 on both axes, g~9.81. Held NRMSE improves ~100% over baseline, BIC much lower, residuals drop from 1e-3 structured to 1e-8 noise.",
    "gate_label": "verification-pass"
   }
- ],
- "note": "Baseline-first verification of the audit fix (finding 1): 1 live run per mode with baseline residuals attached up front. Not a gate (gates need >=3/5)."
+ ]
 }

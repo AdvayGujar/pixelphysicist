@@ -110,6 +110,19 @@ def test_split_by_gaps_keeps_longest_run() -> None:
     assert [len(r) for r in runs] == [10, 40]
 
 
+def test_clean_keeps_near_constant_areas() -> None:
+    """The committed synthetic track (mask areas constant to <1%) must
+    survive cleaning at full length: 3σ of discretization noise is not
+    an outlier. Guards the Day-5 ablation's end-to-end S condition."""
+    from pathlib import Path as _Path
+
+    from pixelphys import trajectory as traj
+
+    root = _Path(__file__).resolve().parent / "fixtures"
+    obs = traj.load_observations(root / "obs_synthetic_toss_drag.json")
+    assert len(traj.clean_observations(obs)) == len(obs) == 30
+
+
 def test_observations_select_single_object(monkeypatch) -> None:  # type: ignore[no-untyped-def]
     import types
 
