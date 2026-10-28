@@ -6,7 +6,7 @@ from pathlib import Path
 import numpy as np
 import pytest
 
-from pixelphys import expr, physics
+from pixelphys import physics
 
 FIXTURES = Path(__file__).resolve().parent / "fixtures"
 
@@ -101,5 +101,21 @@ def test_fit_recovers_truth_in_pixel_units() -> None:
     assert fit.coeffs[1] == pytest.approx(-truth["params"]["drag"] / px_per_m, rel=0.2)
 
 
-def test_expr_basis_available_to_physics() -> None:
-    assert expr.validate_term("abs(v)*v") == "abs(v)*v"
+def test_weak_init_rejects_underdetermined_library() -> None:
+    t = np.linspace(0.0, 1.0, 20)
+    q = t**2
+    with pytest.raises(ValueError, match="underdetermined"):
+        physics.weak_init(["1", "q", "v", "q**2", "v**2", "v**3", "q*v"], t, q)
+
+
+def test_fit_terms_rejects_underdetermined_fit() -> None:
+    t = np.linspace(0.0, 0.1, 5)
+    with pytest.raises(ValueError, match="need >="):
+        physics.fit_terms(["1", "q", "v", "v**2"], t, t**2)
+
+
+def test_weak_init_rejects_nonfinite_basis() -> None:
+    t = np.linspace(0.0, 1.0, 21)
+    q = np.linspace(-1.0, 1.0, 21)  # hits q == 0 exactly: 1/q blows up
+    with pytest.raises(ValueError, match="non-finite"):
+        physics.weak_init(["1/q"], t, q)

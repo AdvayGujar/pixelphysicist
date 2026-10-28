@@ -35,6 +35,7 @@ COEFF_MARGIN = 50.0
 IC_FRACTION = 0.10
 WEAK_FUNCTIONS = 6
 MIN_WEAK_POINTS = 8
+BLOWUP_RESIDUAL = 1e6
 
 
 @dataclass
@@ -96,16 +97,20 @@ def weak_init(terms: list[str], t: np.ndarray, q: np.ndarray) -> np.ndarray:
     so only a (smoothed) velocity estimate is needed, never ``q''``.
     """
     clean = validate_terms(list(terms))
+    if len(clean) > WEAK_FUNCTIONS:
+        raise ValueError(f"{len(clean)} terms exceed {WEAK_FUNCTIONS} test functions: underdetermined")
     t_arr = np.asarray(t, dtype=float)
     q_arr = np.asarray(q, dtype=float)
     n = len(t_arr)
     if n < max(len(clean), MIN_WEAK_POINTS):
         raise ValueError(f"need >= {max(len(clean), MIN_WEAK_POINTS)} points, got {n}")
-    velocity = estimate_velocity(t_arr, q_arr)
-    basis = np.column_stack([compile_term(s)(q_arr, velocity) for s in clean])
     span = float(t_arr[-1] - t_arr[0])
     if span <= 0:
         raise ValueError("time grid must be strictly increasing")
+    velocity = estimate_velocity(t_arr, q_arr)
+    basis = basis_matrix(clean, q_arr, velocity)
+    if not np.all(np.isfinite(basis)):
+        raise ValueError("non-finite basis values (e.g. division by zero in a term)")
     centers = np.linspace(t_arr[0] + 0.15 * span, t_arr[-1] - 0.15 * span, WEAK_FUNCTIONS)
     sigma = span / WEAK_FUNCTIONS / 2.0
     rows = []
@@ -171,12 +176,16 @@ def fit_terms(terms: list[str], t: np.ndarray, q: np.ndarray) -> FitResult:
     """Weak-form start + shooting refinement over coefficients and ``(q0, v0)``.
 
     Three deterministic starts (weak init, zeros, shrunk weak init); the
-    lowest-cost converged run wins.
+    lowest-cost converged run wins. Refuses underdetermined fits outright
+    instead of returning silent garbage.
     """
     clean = validate_terms(list(terms))
     t_arr = np.asarray(t, dtype=float)
     q_arr = np.asarray(q, dtype=float)
     n_terms = len(clean)
+    if len(t_arr) < n_terms + 2:
+        raise ValueError(f"need >= {n_terms + 2} points for {n_terms} terms + ICs, "
+                         f"got {len(t_arr)}")
     try:
         weak = weak_init(clean, t_arr, q_arr)
     except ValueError:
@@ -196,7 +205,7 @@ def fit_terms(terms: list[str], t: np.ndarray, q: np.ndarray) -> FitResult:
             pred, _ = simulate(clean, params[:n_terms], t_arr,
                                (float(params[n_terms]), float(params[n_terms + 1])))
         except RuntimeError:
-            return np.full_like(q_arr, 1e6)
+            return np.full_like(q_arr, BLOWUP_RESIDUAL)
         return pred - q_arr
 
     best: FitResult | None = None

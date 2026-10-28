@@ -94,7 +94,11 @@ def compile_term(term: str) -> Callable[[np.ndarray, np.ndarray], np.ndarray]:
     def evaluate(q: np.ndarray, v: np.ndarray) -> np.ndarray:
         namespace: dict[str, Any] = dict(ALLOWED_FUNCS)
         namespace.update({"q": q, "v": v})
-        result = eval(code, {"__builtins__": {}}, namespace)  # noqa: S307
+        # Terms like 1/q hit zero crossings routinely; callers check
+        # finiteness (weak_init rejects, the shooter routes around). Warn
+        # nowhere: a warning per integrator step would flood Day-5 logs.
+        with np.errstate(divide="ignore", invalid="ignore", over="ignore"):
+            result = eval(code, {"__builtins__": {}}, namespace)  # noqa: S307
         values = np.asarray(result, dtype=float)
         if values.ndim == 0:
             return np.full(np.shape(q), float(values))
