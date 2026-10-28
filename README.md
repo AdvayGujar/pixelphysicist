@@ -67,13 +67,50 @@ Mean B vs A; "beat" = lower held-out NRMSE.
 | Clip | A held-NRMSE | B held-NRMSE (mean of 3) | Beats A | Terms found | Cost |
 |---|---|---|---|---|---|
 | H hero (tossed ball, 20 pts) | 0.732 | 0.399 (0.490 / 0.187 / 0.519) | 3/3 | drag family (`abs(v)*v` ± `q`, `sign(v)`) | ~$0.045 |
-| N negative control (pendulum, 215 pts) | 0.041 | 0.037 (0.037 / 0.037 / 0.037) | 3/3 (worse: see below) | spurious `v**3` + `sign(v)` every repeat | ~$0.098 |
+| N negative control (pendulum, 215 pts) | 0.041 | 0.037 (0.037 / 0.037 / 0.037) | 3/3 (worse: see below) | spurious `v**3` + `sign(v)` every repeat; r1/r2 are unsubmitted fallbacks† | ~$0.098 |
 | S synthetic tracked (30 pts) | 0.062 | 0.005 (0.004 / 0.008 / 0.004) | 3/3 | true `abs(v)*v` 1/3; `q*v` distractor 2/3 | ~$0.074 |
 
-Total: $0.22 for 9 Spark runs. Gate: H GREEN (3/3 beat, −46% mean),
-N RED (Spark adds terms in 3/3; 10.6% mean gap, outside the 5% band),
-S RED on exact recovery (1/3), GREEN on beating the baseline (3/3,
-−91% mean).
+Total: ablation $0.22 for 9 Spark runs (Day-5 tuning pilots ≈ $0.18
+separately; cost-log total ≈ $0.99 of $150 including day-4 gates). Gate:
+H GREEN (3/3 beat, −46% mean), N RED (Spark adds terms in 3/3; 10.6%
+mean gap, outside the 5% band), S RED on exact recovery (1/3), GREEN on
+beating the baseline (3/3, −91% mean).
+
+† N r1/r2 never called `submit_model`; the loop reported its best-held
+model as an unsubmitted fallback. They enter the gate mean as condition-B
+outcomes, not as Spark endorsements.
+
+## Ablation v2 (audit B, `results/ablation_v2.csv`)
+
+Same frozen conditions, stricter loop: screen-then-tight fits (15 s loop
+budget, 5 s screens, shared memo, 8 fit-call cap), submit guard v2
+(≥2% held-NRMSE **and** BIC **and** train-within-5%), repeats H:3 N:5
+S:5. 13 repeats in ~11 min (≈ $0.44). G5 RED stands; v2 is a separate
+experiment reported side by side.
+
+| Clip | A held-NRMSE | B held-NRMSE | Beats A | Terms found | Verdict |
+|---|---|---|---|---|---|
+| H hero | 0.732 | 0.551 (0.187 / 0.732 / 0.732) | 1/3 | drag once (fallback); baseline submitted 2/3 | RED (need 2) |
+| N control | 0.041 | 0.040 (3× baseline, 0.037, 0.037) | 2/5 | baseline 3/5; `v**3`, `q**2` once each | GREEN (gap 4.3%, clean 3/5) |
+| S synthetic | 0.062 | 0.041 (2× 0.008 drag, 3× 0.062 baseline) | 2/5 | true drag 2/5 as fallback; baseline submitted 3/5; **no** `q*v` submissions | RED (need 3 submitted-correct; 0/5) |
+
+What v2 teaches (all numbers from committed transcripts):
+- The guard cleans the control: no `v**3`/`sign(v)` submissions; the one
+  accepted extra term (`q**2`, N r5) passes all three checks narrowly
+  (held 0.0366, BIC 642.5 < 645.8, train +0.6%).
+- The train rule is miscalibrated: the overfit baseline owns the fit
+  window, so true sparse models lose on train (S drag 0.117 vs 0.102,
+  +15%; H drag 3.40 vs 1.17) and can never pass v2. BIC already prices
+  complexity; the follow-up is held-NRMSE **and** BIC, dropping train.
+- Strictness has a price: 2/5 S runs recover the true drag but as
+  fallbacks (Spark explored instead of submitting), which the
+  pre-registered rule does not count — same non-submission habit as v1.
+- Transfer (`results/transfer.json`, `scripts/transfer_check.py`,
+  `rollout_score` on held-out clips): true drag transfers (0.008 → 0.003
+  on a second toss), the `q*v` distractor does not (0.004 → 0.349), the N
+  spurious term does not (0.037 → 0.075), and the v2 `q**2` find does not
+  beat the baseline in transfer (0.090 vs 0.088). BIC + transfer agree;
+  held-NRMSE alone does not.
 
 **Honest limits (read before citing any number above).**
 The numeric fitting is classical; Spark proposes structure only. The

@@ -1,0 +1,165 @@
+{
+ "date": "2026-10-29",
+ "note": "Transfer (rollout_score, ICs refit) is a separate column from G5; it never rewrites a gate. S take-2 shares the renderer pixel scale exactly; N take-2 assumes the same-session scale.",
+ "datasets": {
+  "S": "obs_synthetic_toss_drag_v0b.json (v0=7.5)",
+  "N": "obs_pendulum_take2.json"
+ },
+ "by_experiment_clip": {
+  "ablation/S": {
+   "n": 3,
+   "median_transfer_nrmse": 0.3490912788510475
+  },
+  "ablation/N": {
+   "n": 1,
+   "median_transfer_nrmse": 0.07458649023722023
+  },
+  "ablation_v2/S": {
+   "n": 3,
+   "median_transfer_nrmse": 0.4434297002659848
+  },
+  "ablation_v2/N": {
+   "n": 3,
+   "median_transfer_nrmse": 0.08843910835744867
+  }
+ },
+ "rows": [
+  {
+   "experiment": "ablation",
+   "clip": "S",
+   "repeat": 1,
+   "terms": [
+    "1",
+    "q",
+    "v",
+    "q*v"
+   ],
+   "held_nrmse": 0.003947790173021718,
+   "transfer_nrmse": 0.3490912788510475,
+   "transfer_n_scored": 32
+  },
+  {
+   "experiment": "ablation",
+   "clip": "S",
+   "repeat": 2,
+   "terms": [
+    "1",
+    "abs(v)*v"
+   ],
+   "held_nrmse": 0.008446490488920417,
+   "transfer_nrmse": 0.003226792438957984,
+   "transfer_n_scored": 32
+  },
+  {
+   "experiment": "ablation",
+   "clip": "S",
+   "repeat": 3,
+   "terms": [
+    "1",
+    "q",
+    "v",
+    "q*v"
+   ],
+   "held_nrmse": 0.003947790173021718,
+   "transfer_nrmse": 0.3490912788510475,
+   "transfer_n_scored": 32
+  },
+  {
+   "experiment": "ablation",
+   "clip": "N",
+   "repeat": 3,
+   "terms": [
+    "1",
+    "q",
+    "sign(v)",
+    "v**3"
+   ],
+   "held_nrmse": 0.0367902395013586,
+   "transfer_nrmse": 0.07458649023722023,
+   "transfer_n_scored": 60
+  },
+  {
+   "experiment": "ablation_v2",
+   "clip": "S",
+   "repeat": 2,
+   "terms": [
+    "1",
+    "q",
+    "v",
+    "v**2"
+   ],
+   "held_nrmse": 0.06220275838026542,
+   "transfer_nrmse": 0.4434297002659848,
+   "transfer_n_scored": 32
+  },
+  {
+   "experiment": "ablation_v2",
+   "clip": "S",
+   "repeat": 3,
+   "terms": [
+    "1",
+    "q",
+    "v",
+    "v**2"
+   ],
+   "held_nrmse": 0.06220275838026542,
+   "transfer_nrmse": 0.4434297002659848,
+   "transfer_n_scored": 32
+  },
+  {
+   "experiment": "ablation_v2",
+   "clip": "S",
+   "repeat": 5,
+   "terms": [
+    "1",
+    "q",
+    "v",
+    "v**2"
+   ],
+   "held_nrmse": 0.06220275838026542,
+   "transfer_nrmse": 0.4434297002659848,
+   "transfer_n_scored": 32
+  },
+  {
+   "experiment": "ablation_v2",
+   "clip": "N",
+   "repeat": 1,
+   "terms": [
+    "1",
+    "q",
+    "v",
+    "v**2"
+   ],
+   "held_nrmse": 0.04128793329098349,
+   "transfer_nrmse": 0.08843910835744867,
+   "transfer_n_scored": 60
+  },
+  {
+   "experiment": "ablation_v2",
+   "clip": "N",
+   "repeat": 3,
+   "terms": [
+    "1",
+    "q",
+    "v",
+    "v**2"
+   ],
+   "held_nrmse": 0.04128793329098349,
+   "transfer_nrmse": 0.08843910835744867,
+   "transfer_n_scored": 60
+  },
+  {
+   "experiment": "ablation_v2",
+   "clip": "N",
+   "repeat": 5,
+   "terms": [
+    "1",
+    "q",
+    "q**2"
+   ],
+   "held_nrmse": 0.036589283488301,
+   "transfer_nrmse": 0.09020815026712904,
+   "transfer_n_scored": 60
+  }
+ ]
+}
