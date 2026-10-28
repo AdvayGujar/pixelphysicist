@@ -1,0 +1,68 @@
+{
+ "date": "2026-10-28",
+ "effort": "low",
+ "g4_pass": "1/1",
+ "g4b_pass": "1/1",
+ "g4_gate": "verification",
+ "g4b_gate": "verification",
+ "total_cost_usd": 0.032127,
+ "rows": [
+  {
+   "run": "g4-1",
+   "submitted": true,
+   "terms": [
+    "1",
+    "abs(v)*v"
+   ],
+   "coeffs": [
+    -9.809999950279593,
+    -0.35000000396031355
+   ],
+   "held_nrmse": 1.414968067633179e-09,
+   "bic": -788.4288647219829,
+   "train_rmse": 2.2342301449434832e-10,
+   "baseline_held_nrmse": 0.135203579713803,
+   "baseline_bic": -344.0479340805834,
+   "rounds": 4,
+   "cost_usd": 0.019959,
+   "stopped": "submitted",
+   "correct_term": true,
+   "explanation": "Final q'' = c0 + cd*abs(v)*v: gravity (-9.81) plus quadratic aerodynamic drag per unit mass (cd\u2248-0.35 1/m). Baseline v**2 cannot change sign with velocity; replacing with abs(v)*v drops held NRMSE to ~1e-9 and BIC from -344 to -788. Linear q,v terms fitted ~1e-7 (zero) so dropped for parsimony.",
+   "gate_label": "verification-pass"
+  },
+  {
+   "run": "g4b-1",
+   "submitted": true,
+   "axis_terms": {
+    "x": [
+     "sqrt(vx**2+vy**2)*vx"
+    ],
+    "y": [
+     "1",
+     "sqrt(vx**2+vy**2)*vy"
+    ]
+   },
+   "axis_coeffs": {
+    "x": [
+     -0.06000023581449877
+    ],
+    "y": [
+     -9.81000581367412,
+     -0.06000047405600888
+    ]
+   },
+   "held_nrmse": 2.211741500397925e-07,
+   "bic": -938.7347840804572,
+   "train_rmse": 2.4460156748538625e-08,
+   "baseline_held_nrmse": 0.015067293598666827,
+   "baseline_bic": -484.3017156673648,
+   "rounds": 3,
+   "cost_usd": 0.012168,
+   "stopped": "submitted",
+   "correct_term": true,
+   "explanation": "Quadratic drag with shared coefficient: x''=-k|v|vx, y''=-g-k|v|vy. Fitted k~0.06 on both axes, g~9.81. Held NRMSE improves ~100% over baseline, BIC much lower, residuals drop from 1e-3 structured to 1e-8 noise.",
+   "gate_label": "verification-pass"
+  }
+ ],
+ "note": "Baseline-first verification of the audit fix (finding 1): 1 live run per mode with baseline residuals attached up front. Not a gate (gates need >=3/5)."
+}

@@ -22,7 +22,12 @@
    "cost_usd": 0.015065,
    "stopped": "submitted",
    "correct_term": true,
-   "explanation": "Motion is free fall with quadratic air drag: q'' = -g + k*|v|v with g\u22489.81 and k\u2248-0.35 (drag per unit mass, 1/length). Replacing unsigned v**2 with signed abs(v)*v drops held NRMSE from 0.135 to ~1e-9 and BIC from -344 to -788; q and v coefficients fit to ~1e-7 (zero) so dropped for parsimony."
+   "explanation": "Motion is free fall with quadratic air drag: q'' = -g + k*|v|v with g\u22489.81 and k\u2248-0.35 (drag per unit mass, 1/length). Replacing unsigned v**2 with signed abs(v)*v drops held NRMSE from 0.135 to ~1e-9 and BIC from -344 to -788; q and v coefficients fit to ~1e-7 (zero) so dropped for parsimony.",
+   "held_nrmse": 1.414968067633179e-09,
+   "bic": -788.4288647219829,
+   "train_rmse": 2.2342301449434832e-10,
+   "baseline_held_nrmse": 0.135203579713803,
+   "baseline_bic": -344.0479340805834
   },
   {
    "run": "g4-2",
@@ -39,7 +44,12 @@
    "cost_usd": 0.015867,
    "stopped": "submitted",
    "correct_term": true,
-   "explanation": "Free fall with quadratic air drag: q'' = -g + k*|v|v with g=9.81 and k=-0.35 /m. Replacing unsigned v**2 with abs(v)*v drops held NRMSE from 0.135 to ~1e-9 and BIC from -344 to -788; q and v coefficients fit to ~1e-7 (zero) so sparser 2-term model wins. Residuals ~1e-9/1e-10 show only numerical noise."
+   "explanation": "Free fall with quadratic air drag: q'' = -g + k*|v|v with g=9.81 and k=-0.35 /m. Replacing unsigned v**2 with abs(v)*v drops held NRMSE from 0.135 to ~1e-9 and BIC from -344 to -788; q and v coefficients fit to ~1e-7 (zero) so sparser 2-term model wins. Residuals ~1e-9/1e-10 show only numerical noise.",
+   "held_nrmse": 1.414968067633179e-09,
+   "bic": -788.4288647219829,
+   "train_rmse": 2.2342301449434832e-10,
+   "baseline_held_nrmse": 0.135203579713803,
+   "baseline_bic": -344.0479340805834
   },
   {
    "run": "g4-3",
@@ -60,7 +70,12 @@
    "cost_usd": 0.01074,
    "stopped": "submitted",
    "correct_term": true,
-   "explanation": "Model q'' = -9.81 + c*abs(v)*v with c\u2248-0.35 is gravity plus quadratic air drag opposing motion. q and v coefficients fit to ~0, showing no spring or viscous force. Held NRMSE improves ~100% over baseline and BIC improves -344 to -757; residuals are ~1e-9 with no structure vs t or v."
+   "explanation": "Model q'' = -9.81 + c*abs(v)*v with c\u2248-0.35 is gravity plus quadratic air drag opposing motion. q and v coefficients fit to ~0, showing no spring or viscous force. Held NRMSE improves ~100% over baseline and BIC improves -344 to -757; residuals are ~1e-9 with no structure vs t or v.",
+   "held_nrmse": 1.2071149747832434e-08,
+   "bic": -757.0380903754517,
+   "train_rmse": 4.550724540072161e-10,
+   "baseline_held_nrmse": 0.135203579713803,
+   "baseline_bic": -344.0479340805834
   },
   {
    "run": "g4-4",
@@ -77,7 +92,12 @@
    "cost_usd": 0.015811,
    "stopped": "submitted",
    "correct_term": true,
-   "explanation": "Projectile under gravity with quadratic air drag: q'' = -g - (cd/m)|v|v. The unsigned v**2 baseline cannot oppose motion in both directions; replacing it with abs(v)*v drops held NRMSE from 0.135 to ~1e-9 and q,v coefficients fit to ~1e-7 (zero). The 2-term [1, abs(v)*v] model further improves BIC (-788) with no residual structure above 1e-9 numerical noise."
+   "explanation": "Projectile under gravity with quadratic air drag: q'' = -g - (cd/m)|v|v. The unsigned v**2 baseline cannot oppose motion in both directions; replacing it with abs(v)*v drops held NRMSE from 0.135 to ~1e-9 and q,v coefficients fit to ~1e-7 (zero). The 2-term [1, abs(v)*v] model further improves BIC (-788) with no residual structure above 1e-9 numerical noise.",
+   "held_nrmse": 1.414968067633179e-09,
+   "bic": -788.4288647219829,
+   "train_rmse": 2.2342301449434832e-10,
+   "baseline_held_nrmse": 0.135203579713803,
+   "baseline_bic": -344.0479340805834
   },
   {
    "run": "g4-5",
@@ -94,7 +114,12 @@
    "cost_usd": 0.01456,
    "stopped": "submitted",
    "correct_term": true,
-   "explanation": "Projectile under gravity with quadratic air drag: q'' = -g + k*|v|v. Coefficient of 1 is gravity (-9.81), of abs(v)*v is drag per unit mass (~-0.35 1/m). Dropped baseline's unsigned v**2 (unphysical sign), and q,v terms (fit ~1e-7, zero). Residuals ~1e-9 (noise), held-out NRMSE ~1e-9 and BIC -788 vastly beat baseline."
+   "explanation": "Projectile under gravity with quadratic air drag: q'' = -g + k*|v|v. Coefficient of 1 is gravity (-9.81), of abs(v)*v is drag per unit mass (~-0.35 1/m). Dropped baseline's unsigned v**2 (unphysical sign), and q,v terms (fit ~1e-7, zero). Residuals ~1e-9 (noise), held-out NRMSE ~1e-9 and BIC -788 vastly beat baseline.",
+   "held_nrmse": 1.414968067633179e-09,
+   "bic": -788.4288647219829,
+   "train_rmse": 2.2342301449434832e-10,
+   "baseline_held_nrmse": 0.135203579713803,
+   "baseline_bic": -344.0479340805834
   },
   {
    "run": "g4b-1",
@@ -121,7 +146,12 @@
    "cost_usd": 0.010623,
    "stopped": "submitted",
    "correct_term": true,
-   "explanation": "Quadratic drag with shared coefficient: x''=-k|v|vx, y''=-g-k|v|vy. Fitted k=0.06 on both axes, g=9.81. Residuals ~1e-8 unstructured, held NRMSE improves 99.998% over baseline and BIC -938.7 vs -484.3."
+   "explanation": "Quadratic drag with shared coefficient: x''=-k|v|vx, y''=-g-k|v|vy. Fitted k=0.06 on both axes, g=9.81. Residuals ~1e-8 unstructured, held NRMSE improves 99.998% over baseline and BIC -938.7 vs -484.3.",
+   "held_nrmse": 2.211741500397925e-07,
+   "bic": -938.7347840804572,
+   "train_rmse": 2.4460156748538625e-08,
+   "baseline_held_nrmse": 0.015067293598666827,
+   "baseline_bic": -484.3017156673648
   },
   {
    "run": "g4b-2",
@@ -148,7 +178,12 @@
    "cost_usd": 0.01027,
    "stopped": "submitted",
    "correct_term": true,
-   "explanation": "Quadratic drag model: x''=c|v|vx, y''=-g+c|v|vy with c\u2248-0.06 on both axes and g\u22489.81. Held NRMSE improves ~100% over baseline, BIC much lower, residuals ~1e-8 with no structure, coefficients agree in sign/magnitude as required."
+   "explanation": "Quadratic drag model: x''=c|v|vx, y''=-g+c|v|vy with c\u2248-0.06 on both axes and g\u22489.81. Held NRMSE improves ~100% over baseline, BIC much lower, residuals ~1e-8 with no structure, coefficients agree in sign/magnitude as required.",
+   "held_nrmse": 2.211741500397925e-07,
+   "bic": -938.7347840804572,
+   "train_rmse": 2.4460156748538625e-08,
+   "baseline_held_nrmse": 0.015067293598666827,
+   "baseline_bic": -484.3017156673648
   },
   {
    "run": "g4b-3",
@@ -175,7 +210,12 @@
    "cost_usd": 0.010703,
    "stopped": "submitted",
    "correct_term": true,
-   "explanation": "Quadratic drag model: x'' = -k|v|vx, y'' = -g -k|v|vy with k~0.06 /m on both axes and g~9.81. Residuals ~1e-8 (noise only), held NRMSE improves 99.998% over baseline, BIC -938 vs -484. Same negative coefficient both axes confirms isotropic quadratic drag."
+   "explanation": "Quadratic drag model: x'' = -k|v|vx, y'' = -g -k|v|vy with k~0.06 /m on both axes and g~9.81. Residuals ~1e-8 (noise only), held NRMSE improves 99.998% over baseline, BIC -938 vs -484. Same negative coefficient both axes confirms isotropic quadratic drag.",
+   "held_nrmse": 2.211741500397925e-07,
+   "bic": -938.7347840804572,
+   "train_rmse": 2.4460156748538625e-08,
+   "baseline_held_nrmse": 0.015067293598666827,
+   "baseline_bic": -484.3017156673648
   },
   {
    "run": "g4b-4",
@@ -202,7 +242,12 @@
    "cost_usd": 0.010687,
    "stopped": "submitted",
    "correct_term": true,
-   "explanation": "Quadratic speed-coupled drag with gravity on y only. x'': -k|v|vx, y'': -g -k|v|vy with common k\u22480.06 (1/length) fitted identically on both axes (-0.06000 each) and g\u22489.81. Residuals ~1e-8 (noise), held NRMSE improves 99.998% over baseline with much lower BIC, confirming drag coupled through total speed vs unsigned vx**2 terms."
+   "explanation": "Quadratic speed-coupled drag with gravity on y only. x'': -k|v|vx, y'': -g -k|v|vy with common k\u22480.06 (1/length) fitted identically on both axes (-0.06000 each) and g\u22489.81. Residuals ~1e-8 (noise), held NRMSE improves 99.998% over baseline with much lower BIC, confirming drag coupled through total speed vs unsigned vx**2 terms.",
+   "held_nrmse": 2.211741500397925e-07,
+   "bic": -938.7347840804572,
+   "train_rmse": 2.4460156748538625e-08,
+   "baseline_held_nrmse": 0.015067293598666827,
+   "baseline_bic": -484.3017156673648
   },
   {
    "run": "g4b-5",
@@ -229,7 +274,12 @@
    "cost_usd": 0.010797,
    "stopped": "submitted",
    "correct_term": true,
-   "explanation": "Isotropic quadratic drag + gravity: x''=-k|v|vx, y''=-g-k|v|vy with shared k~0.06, g~9.81. Residuals ~1e-8 unstructured, held NRMSE improved 99.99% over baseline, BIC -938.7 vs -484.3."
+   "explanation": "Isotropic quadratic drag + gravity: x''=-k|v|vx, y''=-g-k|v|vy with shared k~0.06, g~9.81. Residuals ~1e-8 unstructured, held NRMSE improved 99.99% over baseline, BIC -938.7 vs -484.3.",
+   "held_nrmse": 2.211741500397925e-07,
+   "bic": -938.7347840804572,
+   "train_rmse": 2.4460156748538625e-08,
+   "baseline_held_nrmse": 0.015067293598666827,
+   "baseline_bic": -484.3017156673648
   }
  ]
 }

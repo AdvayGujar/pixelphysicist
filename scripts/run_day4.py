@@ -26,14 +26,14 @@ REPO = Path(__file__).resolve().parents[1]
 FIXTURES = REPO / "tests" / "fixtures"
 
 
-def run_g4(n_runs: int, effort: str) -> list[dict]:
+def run_g4(n_runs: int, effort: str, prefix: str) -> list[dict]:
     truth = json.loads((FIXTURES / "toss_drag.json").read_text())
     t = np.array(truth["t"])
     q = np.array(truth["q"])
     cut = int(len(t) * 0.6)
     rows = []
     for i in range(1, n_runs + 1):
-        out_dir = REPO / f"runs/day4_g4_run{i}"
+        out_dir = REPO / f"runs/{prefix}_g4_run{i}"
         (out_dir / "plots").mkdir(parents=True, exist_ok=True)
         tools = S.ScientistTools(t[:cut], q[:cut], t[cut:], q[cut:], out_dir)
         result = S.run_loop(tools, S.default_chat_fn(effort))
@@ -41,6 +41,10 @@ def run_g4(n_runs: int, effort: str) -> list[dict]:
         row = {
             "run": f"g4-{i}", "submitted": result.submitted,
             "terms": result.terms, "coeffs": result.coeffs,
+            "held_nrmse": result.held_nrmse, "bic": result.bic,
+            "train_rmse": result.train_rmse,
+            "baseline_held_nrmse": tools.baseline.held_nrmse,
+            "baseline_bic": tools.baseline.bic,
             "rounds": result.rounds, "cost_usd": round(result.cost_usd, 6),
             "stopped": result.stopped_reason,
             "correct_term": bool(ok_term and result.submitted),
@@ -55,7 +59,7 @@ def run_g4(n_runs: int, effort: str) -> list[dict]:
     return rows
 
 
-def run_g4b(n_runs: int, effort: str) -> list[dict]:
+def run_g4b(n_runs: int, effort: str, prefix: str) -> list[dict]:
     times, xs, ys, _, _ = syn.integrate_projectile(syn.ProjectileParams())
     sl = slice(None, None, 8)
     t = np.array(times[sl])
@@ -64,7 +68,7 @@ def run_g4b(n_runs: int, effort: str) -> list[dict]:
     cut = int(len(t) * 0.6)
     rows = []
     for i in range(1, n_runs + 1):
-        out_dir = REPO / f"runs/day4_g4b_run{i}"
+        out_dir = REPO / f"runs/{prefix}_g4b_run{i}"
         (out_dir / "plots").mkdir(parents=True, exist_ok=True)
         tools = S.ProjectileTools(t[:cut], x[:cut], y[:cut],
                                   t[cut:], x[cut:], y[cut:], out_dir)
@@ -77,6 +81,10 @@ def run_g4b(n_runs: int, effort: str) -> list[dict]:
         row = {
             "run": f"g4b-{i}", "submitted": result.submitted,
             "axis_terms": result.axis_terms, "axis_coeffs": result.axis_coeffs,
+            "held_nrmse": result.held_nrmse, "bic": result.bic,
+            "train_rmse": result.train_rmse,
+            "baseline_held_nrmse": tools.baseline.held_nrmse,
+            "baseline_bic": tools.baseline.bic,
             "rounds": result.rounds, "cost_usd": round(result.cost_usd, 6),
             "stopped": result.stopped_reason,
             "correct_term": bool(ok_term and result.submitted),
@@ -96,13 +104,14 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--runs", type=int, default=5)
     parser.add_argument("--effort", default="low")
     parser.add_argument("--out", default="results/day4.json")
+    parser.add_argument("--prefix", default="day4")
     parser.add_argument("--skip-g4", action="store_true")
     parser.add_argument("--skip-g4b", action="store_true")
     args = parser.parse_args(argv)
 
     all_rows: list[dict] = []
-    g4 = [] if args.skip_g4 else run_g4(args.runs, args.effort)
-    g4b = [] if args.skip_g4b else run_g4b(args.runs, args.effort)
+    g4 = [] if args.skip_g4 else run_g4(args.runs, args.effort, args.prefix)
+    g4b = [] if args.skip_g4b else run_g4b(args.runs, args.effort, args.prefix)
     all_rows = g4 + g4b
     total_cost = round(sum(r["cost_usd"] for r in all_rows), 6)
     summary = {
@@ -121,7 +130,8 @@ def main(argv: list[str] | None = None) -> int:
     print(f"G4: {summary['g4_pass']} -> {summary['g4_gate']}; "
           f"G4b: {summary['g4b_pass']} -> {summary['g4b_gate']}; "
           f"total ${total_cost:.4f}; wrote {out}")
-    return 0 if summary["g4_gate"] in ("GREEN", "skipped") else 1
+    return 0 if (summary["g4_gate"] in ("GREEN", "skipped")
+                 and summary["g4b_gate"] in ("GREEN", "skipped")) else 1
 
 
 if __name__ == "__main__":

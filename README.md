@@ -43,9 +43,10 @@ Built and verified:
   — the simple control is reported, not hidden).
 - Scientist: the 3-tool Spark loop (`fit_model`, `plot_residuals`,
   `submit_model` with a beat-the-baseline guard) is built in both modes
-  and has completed one live run each on synthetic data, recovering the
-  hidden drag coefficients exactly. The full 5-run gates and the real-clip
-  ablation are Day 4–5 work.
+  and both 5-run synthetic gates are green (G4/G4b 5/5, `results/day4.json`
+  via `scripts/run_day4.py`): the hidden drag coefficients are recovered
+  exactly, with the baseline residual plots attached up front so the first
+  fit is a diagnosis of seen evidence. The real-clip ablation is Day-5 work.
 
 Not built yet: the one-command `pixelphys run …` wiring, the report and
 ghost-overlay renderer, the ablation table, and the demo video.

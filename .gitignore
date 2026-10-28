@@ -15,6 +15,7 @@ results/*.csv
 results/*.json
 !results/baseline.json
 !results/day4.json
+!results/day4_diag.json
 data/clips/*
 data/synthetic/*
 !data/clips/.gitkeep

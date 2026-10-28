@@ -303,6 +303,11 @@ class ScientistResult:
     transcript: list[dict[str, Any]] = field(default_factory=list)
     axis_terms: dict[str, list[str]] | None = None
     axis_coeffs: dict[str, list[float | None]] | None = None
+    # Final-model scores, so committed runner rows are numerically
+    # re-auditable without the (gitignored) transcripts.
+    held_nrmse: float | None = None
+    bic: float | None = None
+    train_rmse: float | None = None
 
 
 def default_chat_fn(reasoning_effort: str = "low") -> Callable[..., Any]:
@@ -576,12 +581,42 @@ def run_loop(tools: Any, chat_fn: Callable[..., Any],
         {"role": "user", "content":
          "Data summary (fit / held-out split of one tracked clip): "
          + json.dumps(summary)
-         + "\nStart by calling fit_model with a physically motivated "
-           "structure, inspect residuals with plot_residuals, and finish "
+         + "\nThe baseline model's residual plots are attached below. "
+           "Start by reading them to diagnose where the baseline fails, "
+           "then call fit_model with a physically motivated structure, "
+           "inspect residuals with plot_residuals, and finish "
            "with submit_model."},
     ]
+    # Attach the baseline failure evidence up front so the first fit is a
+    # diagnosis of something Spark has seen, not a guess from the menu.
+    # Failures here must never break the loop (baseline may not have fit).
+    baseline_plots: list[dict[str, Any]] = []
+    try:
+        for versus in (["t"] if projectile else ["t", "v"]):
+            plotted = tools.plot_residuals(tools.baseline_id, versus)
+            if plotted.get("path"):
+                baseline_plots.append(plotted)
+    except Exception:
+        baseline_plots = []
+    for plotted in baseline_plots:
+        encoded = base64.b64encode(
+            Path(plotted["path"]).read_bytes()).decode()
+        messages.append({
+            "role": "user",
+            "content": [
+                {"type": "text",
+                 "text": "Baseline (model-0) residual plot vs "
+                         f"{plotted['versus']}: diagnose this failure mode "
+                         "before proposing a structure."},
+                {"type": "image_url", "image_url":
+                 {"url": f"data:image/png;base64,{encoded}"}},
+            ],
+        })
     schemas = schemas or (TOOL_SCHEMAS_2D if projectile else TOOL_SCHEMAS)
-    transcript: list[dict[str, Any]] = [{"event": "start", "summary": summary}]
+    transcript: list[dict[str, Any]] = [{
+        "event": "start", "summary": summary,
+        "baseline_plots": [p.get("path") for p in baseline_plots],
+    }]
     cost_usd = 0.0
     stopped = "max rounds reached"
     stagnant = 0
@@ -679,4 +714,7 @@ def run_loop(tools: Any, chat_fn: Callable[..., Any],
         transcript=transcript,
         axis_terms=axis_terms,
         axis_coeffs=axis_coeffs,
+        held_nrmse=_num(final.held_nrmse),
+        bic=_num(final.bic),
+        train_rmse=_num(final.train_rmse),
     )
