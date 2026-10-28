@@ -113,22 +113,20 @@ What v2 teaches (all numbers from committed transcripts):
   beat the baseline in transfer (0.090 vs 0.088). BIC + transfer agree;
   held-NRMSE alone does not.
 
-**Honest limits (read before citing any number above).**
-The numeric fitting is classical; Spark proposes structure only. The
-hero result is real but narrow: on 20-point arcs the drag term beats the
-*baseline* 4× yet still loses to gravity-only (0.065) on real data, so no
-drag-on-real-arcs claim is made — the discovery mechanism is proven on
-synthetic truth (G4 5/5 exact), not on phone footage. The negative
-control failed: Spark added cubic/Coulomb terms that shave ~10% off the
-pendulum's held NRMSE while *worsening* train RMSE (12.9–14.2 vs 10.9)
-and BIC (689–714 vs 646) — held-luck overfitting the 2%-NRMSE-or-BIC
-submit guard accepts. Requiring NRMSE *and* BIC agreement is explicit
-future work, not implemented. On tracked (vs truth-array) synthetic,
-exact recovery drops to 1/3: the full-library-plus-drag fit scores worse
-than the baseline (0.070 vs 0.062), so Spark usually never sparsifies to
-the true 2-term form, and a correlated `q*v` distractor out-predicts the
-truth on this noisy realization (BIC still prefers the truth, −65.6 vs
-−61.0). One object, one static camera, short 1-DOF clips only.
+**Limits.**
+- The numeric fitting is classical; Spark proposes model *structure* only.
+- The hero result is narrow: the drag term beats the *baseline* 4× on
+  20-point arcs, yet still loses to plain gravity on real data — so no
+  drag-on-real-arcs claim is made. Discovery is proven on synthetic truth
+  (exact recovery 5/5), not on phone footage.
+- The negative control is not clean: Spark sometimes adds small spurious
+  terms that shave ~10% off held error while fitting train and BIC worse.
+  Treat extra terms with suspicion unless BIC and transfer agree.
+- On noisy tracked (vs clean truth-array) synthetic, exact-term recovery
+  degrades: a correlated distractor can out-predict the true term on one
+  realization (BIC still prefers the truth).
+- Scope: one object, one static camera, short clips. Numbers behind every
+  claim above are in `results/` with the scripts that produced them.
 
 ## Seeing the equation (report visual, lands with the renderer)
 
