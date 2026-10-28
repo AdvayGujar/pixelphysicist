@@ -13,6 +13,7 @@ venv/
 runs/
 results/*.csv
 results/*.json
+!results/baseline.json
 data/clips/*
 data/synthetic/*
 !data/clips/.gitkeep
