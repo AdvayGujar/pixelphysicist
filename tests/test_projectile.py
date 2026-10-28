@@ -111,3 +111,32 @@ def test_projectile_tools_and_scripted_loop_find_drag(tmp_path) -> None:  # type
                                  "y": ["1", P.DRAG_TERM_Y]}
     assert result.axis_coeffs is not None
     assert result.axis_coeffs["y"][0] == pytest.approx(-9.81, rel=0.05)
+
+
+@pytest.mark.slow
+def test_projectile_identity_truth_scores_near_zero() -> None:
+    """Extension gate B1: scoring the true family must return ~zero held error."""
+    t, x, y = projectile_data()
+    cut = int(len(t) * 0.6)
+    scored = P.score_projectile([P.DRAG_TERM_X], ["1", P.DRAG_TERM_Y],
+                                t[:cut], x[:cut], y[:cut],
+                                t[cut:], x[cut:], y[cut:])
+    assert scored.ok and scored.held_nrmse < 1e-6
+
+
+@pytest.mark.slow
+def test_projectile_noisy_recovery_within_tolerance() -> None:
+    """Extension gate B2: at 0.5 px noise, g within 5% and k within 25%."""
+    rng = np.random.default_rng(7)
+    t, x, y = projectile_data()
+    sigma_m = 0.5 / syn.PX_PER_M_2D
+    xn = x + rng.normal(0.0, sigma_m, size=x.shape)
+    yn = y + rng.normal(0.0, sigma_m, size=y.shape)
+    cut = int(len(t) * 0.6)
+    scored = P.score_projectile([P.DRAG_TERM_X], ["1", P.DRAG_TERM_Y],
+                                t[:cut], xn[:cut], yn[:cut],
+                                t[cut:], xn[cut:], yn[cut:])
+    assert scored.ok
+    assert abs(-scored.coeffs_y[0] - 9.81) / 9.81 < 0.05
+    assert abs(-scored.coeffs_x[0] - 0.06) / 0.06 < 0.25
+    assert abs(-scored.coeffs_y[1] - 0.06) / 0.06 < 0.25
