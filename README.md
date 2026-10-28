@@ -10,38 +10,67 @@ motion it never saw.
 ```
 phone clip
   → tracking (SAM 3.1 video, HSV color fallback)
-  → calibration to a 1-DOF coordinate q(t)
-  → classical fit of a default physical model
+  → calibration to coordinates: 1-DOF q(t), or projectile x(t), y(t)
+  → classical fit of a default physical model (weak-form init + shooting)
   → Spark loop: read residual plots, propose the missing term, refit
-  → held-out prediction → equation graph + overlay video + report
+  → held-out prediction, scored by NRMSE + BIC over a fixed horizon
 ```
 
 The numeric fitting is classical. Spark's contribution is proposing and
 revising model *structure* from residual evidence; an ablation with a negative
-control measures exactly that contribution. The pipeline handles one 1-DOF
-coordinate, one object, one static camera.
+control measures exactly that contribution. The pipeline handles one object
+and one static camera, in two scientist modes:
 
-## Seeing the equation
+- **1-DOF mode** — a single coordinate `q(t)` (vertical toss, pendulum
+  displacement) with terms in `q, v`; Spark looks for terms like quadratic
+  drag `abs(v)*v` or Coulomb friction `sign(v)` outside the baseline
+  `[1, q, v, v**2]`.
+- **Projectile mode** — two coupled coordinates `x(t), y(t)` with terms in
+  `x, y, vx, vy`; Spark looks for drag coupled through the speed, e.g.
+  `sqrt(vx**2+vy**2)*vx`, with the same coefficient expected on both axes.
 
-The main output of a run is a single graph, not a table of numbers. On the
-same axes it shows the measured trajectory as points, the baseline model's
-curve, and the final model's curve continued (dashed) into motion the fit
-never saw — with the discovered equation, its fitted coefficients, and both
-models' held-out NRMSE written on the graph itself. If the final curve peels
-away from the held-out points, the graph says so; that is the validation, not
-a decoration. The same graph is embedded in each run's `report.html`.
+## Current state (Day 3 done, Day 4 in progress)
 
-## Planned extension (post-freeze, not yet built)
+Built and verified:
 
-After the core pipeline is frozen, a one-go projectile mode is planned: a
-finished throw clip goes in, and a single run produces the fitted projectile
-equations for both axes, the equation graph, the report, and a 3-D replay in
-which a rendered ball re-flies the *fitted* equations (the replay is driven
-by the exported model, not by the tracked points, and is labelled "fitted
-model"). Two honest limits are part of the design: SAM 3.1 is a batch API,
-so this is a one-go post-capture flow (tens of seconds), **not** realtime;
-and a single phone camera only determines motion in the throw plane, which
-is embedded in the 3-D scene — no depth is claimed.
+- Tracking: SAM 3.1 video and an HSV color fallback; synthetic clips with
+  known ground truth in both modes (`tests/fixtures/`).
+- Fitting: weak-form (integral) initialization plus shooting refinement;
+  every candidate is scored on held-out motion it never saw
+  (`results/baseline.json`, reproduced by `scripts/run_baseline.py`).
+  Synthetic truth is recovered exactly in both modes; the baseline fails
+  visibly on the real hero clip (held-out NRMSE 0.73 vs gravity-only 0.065
+  — the simple control is reported, not hidden).
+- Scientist: the 3-tool Spark loop (`fit_model`, `plot_residuals`,
+  `submit_model` with a beat-the-baseline guard) is built in both modes
+  and has completed one live run each on synthetic data, recovering the
+  hidden drag coefficients exactly. The full 5-run gates and the real-clip
+  ablation are Day 4–5 work.
+
+Not built yet: the one-command `pixelphys run …` wiring, the report and
+ghost-overlay renderer, the ablation table, and the demo video.
+
+## Seeing the equation (report visual, lands with the renderer)
+
+The intended main output of a run is a single graph, not a table of numbers.
+On the same axes it will show the measured trajectory as points, the baseline
+model's curve, and the final model's curve continued (dashed) into motion
+the fit never saw — with the discovered equation, its fitted coefficients,
+and both models' held-out NRMSE written on the graph itself. If the final
+curve peels away from the held-out points, the graph says so; that is the
+validation, not a decoration. (The residual plots Spark reads during a run
+already exist; the combined equation graph is part of the Day-6 report.)
+
+## Still planned (post-freeze)
+
+A one-go projectile flow — finished throw clip in, fitted equations,
+equation graph, report, and a 3-D replay ball re-flying the *fitted*
+equations out — plus the replay renderer itself. Two honest limits are part
+of the design: SAM 3.1 is a batch API, so this is a one-go post-capture flow
+(tens of seconds), **not** realtime; and a single phone camera only
+determines motion in the throw plane, which is embedded in the 3-D scene —
+no depth is claimed. The replay is labelled "fitted model", never exact
+motion.
 
 ## Quickstart
 
