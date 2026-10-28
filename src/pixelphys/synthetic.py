@@ -75,6 +75,105 @@ def render_clip(positions: list[float], mp4_path: Path, fps: int = FPS) -> None:
         writer.release()
 
 
+PX_PER_M_2D = 30
+PROJECTILE_X0_M = 1.0
+
+
+@dataclass(frozen=True)
+class ProjectileParams:
+    v0: float = 11.0
+    angle_deg: float = 52.0
+    gravity: float = 9.81
+    drag_k: float = 0.06
+    linear_c: float = 0.0
+
+
+def projectile_accel(vx: float, vy: float,
+                     params: ProjectileParams) -> tuple[float, float]:
+    speed = (vx * vx + vy * vy) ** 0.5
+    ax = -params.drag_k * speed * vx - params.linear_c * vx
+    ay = -params.gravity - params.drag_k * speed * vy - params.linear_c * vy
+    return ax, ay
+
+
+def integrate_projectile(params: ProjectileParams,
+                         dt: float = 1.0 / 240.0,
+                         ) -> tuple[list[float], list[float], list[float],
+                                    list[float], list[float]]:
+    """RK4 the coupled drag projectile until it returns to launch height."""
+    import math
+
+    angle = math.radians(params.angle_deg)
+    times, xs, ys = [0.0], [0.0], [0.0]
+    vxs, vys = [params.v0 * math.cos(angle)], [params.v0 * math.sin(angle)]
+
+    def deriv(vx: float, vy: float) -> tuple[float, float]:
+        return projectile_accel(vx, vy, params)
+
+    while True:
+        vx, vy = vxs[-1], vys[-1]
+        a1 = deriv(vx, vy)
+        a2 = deriv(vx + 0.5 * dt * a1[0], vy + 0.5 * dt * a1[1])
+        a3 = deriv(vx + 0.5 * dt * a2[0], vy + 0.5 * dt * a2[1])
+        a4 = deriv(vx + dt * a3[0], vy + dt * a3[1])
+        new_vx = vx + dt * (a1[0] + 2 * a2[0] + 2 * a3[0] + a4[0]) / 6.0
+        new_vy = vy + dt * (a1[1] + 2 * a2[1] + 2 * a3[1] + a4[1]) / 6.0
+        new_x = xs[-1] + dt * (vx + new_vx) / 2.0
+        new_y = ys[-1] + dt * (vy + new_vy) / 2.0
+        times.append(times[-1] + dt)
+        xs.append(new_x)
+        ys.append(new_y)
+        vxs.append(new_vx)
+        vys.append(new_vy)
+        if times[-1] > 0.1 and new_y < 0.0 and new_vy < 0.0:
+            break
+        if times[-1] > 20.0:
+            break
+    return times, xs, ys, vxs, vys
+
+
+def projectile_center_px(x_m: float, y_m: float) -> tuple[int, int]:
+    return (int((PROJECTILE_X0_M + x_m) * PX_PER_M_2D),
+            int(GROUND_Y_PX - y_m * PX_PER_M_2D))
+
+
+def render_projectile_2d(mp4_path: Path, json_path: Path,
+                         params: ProjectileParams = ProjectileParams(),
+                         fps: int = FPS) -> dict[str, Path]:
+    """Render the coupled-drag projectile; truth JSON carries (x, y, vx, vy)."""
+    import cv2
+    import numpy as np
+
+    times, xs, ys, vxs, vys = integrate_projectile(params)
+    sampled = [sample_at_fps(times, values, fps)
+               for values in (times, xs, ys, vxs, vys)]
+    s_t, s_x, s_y, s_vx, s_vy = sampled
+    mp4_path.parent.mkdir(parents=True, exist_ok=True)
+    json_path.parent.mkdir(parents=True, exist_ok=True)
+    truth = {
+        "model": "x''=-k*|v|*vx-c*vx, y''=-g-k*|v|*vy-c*vy",
+        "params": {"v0": params.v0, "angle_deg": params.angle_deg,
+                   "gravity": params.gravity, "drag_k": params.drag_k,
+                   "linear_c": params.linear_c},
+        "fps": fps, "px_per_m": PX_PER_M_2D, "x0_m": PROJECTILE_X0_M,
+        "ground_y_px": GROUND_Y_PX,
+        "t": s_t, "x": s_x, "y": s_y, "vx": s_vx, "vy": s_vy,
+    }
+    json_path.write_text(json.dumps(truth))
+    writer = cv2.VideoWriter(str(mp4_path),
+                             cv2.VideoWriter_fourcc(*"mp4v"), fps,
+                             (FRAME_W, FRAME_H))
+    try:
+        for x_m, y_m in zip(s_x, s_y):
+            frame = np.full((FRAME_H, FRAME_W, 3), BACKGROUND, dtype=np.uint8)
+            cv2.circle(frame, projectile_center_px(x_m, y_m),
+                       DOT_RADIUS_PX, DOT_COLOR, -1)
+            writer.write(frame)
+    finally:
+        writer.release()
+    return {"mp4": mp4_path, "json": json_path}
+
+
 def render_toss_drag(mp4_path: Path, json_path: Path, params: TossParams = TossParams()) -> dict[str, Path]:
     times, positions, velocities = integrate_toss(params)
     sampled_q = sample_at_fps(times, positions)

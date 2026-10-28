@@ -395,6 +395,269 @@ def rollout_score(terms: list[str], coeffs: np.ndarray,
         return float("inf"), 0
 
 
+# --- 2-DOF projectile mode (Section 4.5b): state [x, y, vx, vy] -----------
+# Terms are per-axis expressions in (x, y, vx, vy); the drag coupling enters
+# through terms like sqrt(vx**2 + vy**2) * vx, which mix both velocities.
+
+PROJECTILE_BASELINE_X = ["1", "x", "vx", "vx**2"]
+PROJECTILE_BASELINE_Y = ["1", "y", "vy", "vy**2"]
+DRAG_TERM_X = "sqrt(vx**2+vy**2)*vx"
+DRAG_TERM_Y = "sqrt(vx**2+vy**2)*vy"
+
+
+@dataclass
+class FitResult2D:
+    terms_x: list[str]
+    terms_y: list[str]
+    coeffs_x: np.ndarray
+    coeffs_y: np.ndarray
+    state0: tuple[float, float, float, float]
+    cost: float = field(default=float("inf"))
+    start_index: int = field(default=-1)
+
+
+@dataclass
+class ScoredFit2D:
+    """score_projectile outcome; failure is data (ok=False), never a raise."""
+
+    ok: bool
+    terms_x: list[str]
+    terms_y: list[str]
+    coeffs_x: np.ndarray
+    coeffs_y: np.ndarray
+    state0: tuple[float, float, float, float]
+    train_rmse: float
+    held_nrmse: float
+    bic: float
+    n_scored: int
+    cost: float
+    start_index: int
+    error: str | None = None
+
+
+def simulate_projectile(terms_x: list[str], terms_y: list[str],
+                        coeffs_x: np.ndarray, coeffs_y: np.ndarray,
+                        t: np.ndarray,
+                        state0: tuple[float, float, float, float],
+                        ) -> tuple[np.ndarray, np.ndarray, np.ndarray, np.ndarray]:
+    """Integrate the coupled system; returns ``(x, y, vx, vy)`` at ``t``."""
+    from .expr import compile_term_2d, validate_terms as _vt
+    from .expr import ALLOWED_NAMES_2D
+
+    clean_x = _vt(list(terms_x), ALLOWED_NAMES_2D)
+    clean_y = _vt(list(terms_y), ALLOWED_NAMES_2D)
+    gains_x = np.asarray(coeffs_x, dtype=float)
+    gains_y = np.asarray(coeffs_y, dtype=float)
+    if gains_x.shape != (len(clean_x),) or gains_y.shape != (len(clean_y),):
+        raise ValueError("coefficient counts must match term counts")
+    if not (np.all(np.isfinite(gains_x)) and np.all(np.isfinite(gains_y))):
+        raise ValueError("coefficients must be finite")
+    t_arr = np.asarray(t, dtype=float)
+    if t_arr.ndim != 1 or len(t_arr) < 2:
+        raise ValueError(f"need a 1-D grid of >= 2 points, got shape {t_arr.shape}")
+    if not bool(np.all(np.diff(t_arr) > 0)):
+        raise ValueError("time grid must be strictly increasing")
+    basis_x = [compile_term_2d(s) for s in clean_x]
+    basis_y = [compile_term_2d(s) for s in clean_y]
+
+    def rhs(_time: float, state: list[float]) -> list[float]:
+        x, y, vx, vy = (float(s) for s in state)
+        point = (np.asarray(x), np.asarray(y), np.asarray(vx), np.asarray(vy))
+        ax = sum(g * f(*point) for g, f in zip(gains_x, basis_x))
+        ay = sum(g * f(*point) for g, f in zip(gains_y, basis_y))
+        return [vx, vy, float(np.asarray(ax)), float(np.asarray(ay))]
+
+    stiff_first = _uses_sign(clean_x + clean_y)
+    methods = ["BDF", "DOP853"] if stiff_first else ["DOP853", "BDF"]
+    for method in methods:
+        sol = solve_ivp(rhs, (t_arr[0], t_arr[-1]), list(state0), method=method,
+                        t_eval=t_arr, rtol=1e-9, atol=1e-12)
+        if sol.success and np.all(np.isfinite(sol.y)):
+            return (np.asarray(sol.y[0]), np.asarray(sol.y[1]),
+                    np.asarray(sol.y[2]), np.asarray(sol.y[3]))
+    raise RuntimeError(f"integration failed for terms {clean_x} / {clean_y}")
+
+
+def _weak_axis_2d(terms: list[str], t: np.ndarray, pos: np.ndarray,
+                  pos_vel: np.ndarray, basis: np.ndarray) -> np.ndarray:
+    """One axis of the weak form over a precomputed 2-D basis matrix."""
+    span = float(t[-1] - t[0])
+    step = float(np.median(np.diff(t)))
+    sigma = max(span / 4.0, 4.0 * step)
+    centers = np.linspace(t[0] + 0.15 * span, t[-1] - 0.15 * span, WEAK_FUNCTIONS)
+    rows, targets = [], []
+    for center in centers:
+        shifted = (t - center) / sigma
+        weights = np.exp(-0.5 * shifted**2)
+        slopes = -shifted / sigma * weights
+        curvatures = weights * (shifted**2 - 1.0) / sigma**2
+        rows.append(_trapz(weights[:, None] * basis, t, axis=0))
+        edge = ((slopes[-1] * pos[-1] - weights[-1] * pos_vel[-1])
+                - (slopes[0] * pos[0] - weights[0] * pos_vel[0]))
+        targets.append(float(_trapz(curvatures * pos, t)) - edge)
+    coeffs, _, _, _ = np.linalg.lstsq(np.stack(rows), np.array(targets),
+                                      rcond=None)
+    return coeffs
+
+
+def _projectile_setup(terms_x: list[str], terms_y: list[str],
+                      t: np.ndarray, x: np.ndarray, y: np.ndarray,
+                      ) -> tuple[list[str], list[str], np.ndarray, np.ndarray,
+                                 np.ndarray, np.ndarray]:
+    from .expr import ALLOWED_NAMES_2D, basis_matrix_2d, validate_terms as _vt
+
+    clean_x = _vt(list(terms_x), ALLOWED_NAMES_2D)
+    clean_y = _vt(list(terms_y), ALLOWED_NAMES_2D)
+    vx = estimate_velocity(t, x)
+    vy = estimate_velocity(t, y)
+    basis_x = basis_matrix_2d(clean_x, x, y, vx, vy)
+    basis_y = basis_matrix_2d(clean_y, x, y, vx, vy)
+    if not (np.all(np.isfinite(basis_x)) and np.all(np.isfinite(basis_y))):
+        raise ValueError("non-finite basis values for projectile terms")
+    return clean_x, clean_y, vx, vy, basis_x, basis_y
+
+
+def _axis_bounds_2d(scale: float, basis: np.ndarray) -> tuple[np.ndarray, np.ndarray]:
+    peaks = np.maximum(np.max(np.abs(basis), axis=0), 1e-300)
+    ceiling = COEFF_MARGIN * scale / peaks
+    return -ceiling, ceiling
+
+
+def fit_projectile(terms_x: list[str], terms_y: list[str],
+                   t: np.ndarray, x: np.ndarray, y: np.ndarray,
+                   budget_s: float | None = None) -> FitResult2D:
+    """Weak-form start + shooting over per-axis coefficients and the state."""
+    t_arr = np.asarray(t, dtype=float)
+    x_arr = np.asarray(x, dtype=float)
+    y_arr = np.asarray(y, dtype=float)
+    clean_x, clean_y, vx, vy, basis_x, basis_y = _projectile_setup(
+        terms_x, terms_y, t_arr, x_arr, y_arr)
+    nx, ny = len(clean_x), len(clean_y)
+    if len(t_arr) < nx + ny + 4:
+        raise ValueError(f"need >= {nx + ny + 4} points for {nx}+{ny} terms "
+                         f"+ 4 state values, got {len(t_arr)}")
+    try:
+        weak_x = np.clip(_weak_axis_2d(clean_x, t_arr, x_arr, vx, basis_x),
+                         *_axis_bounds_2d(accel_scale(t_arr, x_arr), basis_x))
+        weak_y = np.clip(_weak_axis_2d(clean_y, t_arr, y_arr, vy, basis_y),
+                         *_axis_bounds_2d(accel_scale(t_arr, y_arr), basis_y))
+        weak = np.concatenate([weak_x, weak_y])
+    except ValueError:
+        weak = np.zeros(nx + ny)
+    ix_low, ix_up, x0g, vx0g = _ic_bounds(t_arr, x_arr)
+    iy_low, iy_up, y0g, vy0g = _ic_bounds(t_arr, y_arr)
+    bx_low, bx_up = _axis_bounds_2d(accel_scale(t_arr, x_arr), basis_x)
+    by_low, by_up = _axis_bounds_2d(accel_scale(t_arr, y_arr), basis_y)
+    state_guess = np.array([x0g, y0g, vx0g, vy0g])
+    lower = np.concatenate([bx_low, by_low,
+                            [ix_low[0], iy_low[0], ix_low[1], iy_low[1]]])
+    upper = np.concatenate([bx_up, by_up,
+                            [ix_up[0], iy_up[0], ix_up[1], iy_up[1]]])
+    starts = [np.concatenate([weak, state_guess]),
+              np.concatenate([np.zeros(nx + ny), state_guess]),
+              np.concatenate([0.5 * weak, state_guess])]
+    deadline = None if budget_s is None else time.monotonic() + budget_s
+
+    def residual(params: np.ndarray) -> np.ndarray:
+        if deadline is not None and time.monotonic() > deadline:
+            raise _BudgetExceeded(f"fit budget of {budget_s}s exceeded")
+        state = (float(params[nx + ny]), float(params[nx + ny + 1]),
+                 float(params[nx + ny + 2]), float(params[nx + ny + 3]))
+        try:
+            px, py, _, _ = simulate_projectile(
+                clean_x, clean_y, params[:nx], params[nx:nx + ny],
+                t_arr, state)
+        except RuntimeError:
+            return np.full(2 * len(t_arr), BLOWUP_RESIDUAL)
+        return np.concatenate([px - x_arr, py - y_arr])
+
+    best: FitResult2D | None = None
+    best_cost = float("inf")
+    max_nfev = MAX_NFEV_PER_VAR * (nx + ny + 4)
+    try:
+        for index, start in enumerate(starts):
+            result = least_squares(residual, start, bounds=(lower, upper),
+                                   max_nfev=max_nfev, ftol=SHOOT_FTOL,
+                                   xtol=SHOOT_XTOL, gtol=SHOOT_GTOL)
+            if (result.success and np.all(np.isfinite(result.x))
+                    and np.isfinite(result.cost) and result.cost < best_cost):
+                best_cost = result.cost
+                state = tuple(float(v) for v in result.x[nx + ny:nx + ny + 4])
+                best = FitResult2D(clean_x, clean_y,
+                                   result.x[:nx], result.x[nx:nx + ny],
+                                   state, float(result.cost), index)
+    except _BudgetExceeded as exc:
+        raise RuntimeError(str(exc)) from None
+    if best is None:
+        raise RuntimeError(f"projectile shooting fit failed for {clean_x} / {clean_y}")
+    return best
+
+
+def score_projectile(terms_x: list[str], terms_y: list[str],
+                     t_fit: np.ndarray, x_fit: np.ndarray, y_fit: np.ndarray,
+                     t_held: np.ndarray, x_held: np.ndarray, y_held: np.ndarray,
+                     horizon_s: float = 2.0,
+                     budget_s: float = DEFAULT_FIT_BUDGET_S) -> ScoredFit2D:
+    """Fit on the fit window, score the continuation on held-out (x, y).
+
+    Held NRMSE is the 2-D RMSE normalized by the held segment's amplitude
+    (hypotenuse of the per-axis ranges). BIC counts coefficients plus the
+    4 fitted initial-state values. Failures return ok=False with inf
+    metrics -- the same contract as score_candidate.
+    """
+    def failed(cx: list[str], cy: list[str], error: str) -> ScoredFit2D:
+        return ScoredFit2D(False, cx, cy, np.full(len(cx), np.nan),
+                           np.full(len(cy), np.nan),
+                           (float("nan"),) * 4, float("inf"), float("inf"),
+                           float("inf"), 0, float("inf"), -1, error)
+
+    clean_x: list[str] = []
+    clean_y: list[str] = []
+    try:
+        from .expr import ALLOWED_NAMES_2D, validate_terms as _vt
+
+        clean_x = _vt(list(terms_x), ALLOWED_NAMES_2D)
+        clean_y = _vt(list(terms_y), ALLOWED_NAMES_2D)
+        t_fit_a = np.asarray(t_fit, dtype=float)
+        t_held_a = np.asarray(t_held, dtype=float)
+        if len(t_held_a) < 1:
+            return failed(clean_x, clean_y, "no held-out points to score")
+        fit = fit_projectile(clean_x, clean_y, t_fit_a,
+                             np.asarray(x_fit, dtype=float),
+                             np.asarray(y_fit, dtype=float),
+                             budget_s=budget_s)
+        horizon_end = float(t_held_a[0]) + horizon_s
+        scored = min(max(int(np.searchsorted(t_held_a, horizon_end)), 1),
+                     len(t_held_a))
+        grid = np.concatenate([t_fit_a, t_held_a])
+        px, py, _, _ = simulate_projectile(fit.terms_x, fit.terms_y,
+                                           fit.coeffs_x, fit.coeffs_y,
+                                           grid, fit.state0)
+        n_fit = len(t_fit_a)
+        held_x, held_y = px[n_fit:n_fit + scored], py[n_fit:n_fit + scored]
+        if not (np.all(np.isfinite(held_x)) and np.all(np.isfinite(held_y))):
+            return failed(clean_x, clean_y, "rollout went non-finite on held-out data")
+        train_x, train_y = px[:n_fit], py[:n_fit]
+        rss = float(np.sum((train_x - np.asarray(x_fit, dtype=float))**2)
+                    + np.sum((train_y - np.asarray(y_fit, dtype=float))**2))
+        rmse_2d = float(np.sqrt(np.mean(
+            (held_x - np.asarray(x_held, dtype=float)[:scored])**2
+            + (held_y - np.asarray(y_held, dtype=float)[:scored])**2)))
+        amplitude = float(np.hypot(
+            np.ptp(np.asarray(x_held, dtype=float)[:scored]),
+            np.ptp(np.asarray(y_held, dtype=float)[:scored])))
+        held_nrmse = (rmse_2d / amplitude if amplitude > 1e-12
+                      else (0.0 if rmse_2d <= 1e-12 else float("inf")))
+        return ScoredFit2D(True, fit.terms_x, fit.terms_y, fit.coeffs_x,
+                           fit.coeffs_y, fit.state0,
+                           float(np.sqrt(rss / (2 * n_fit))), held_nrmse,
+                           bic(n_fit, rss, len(fit.coeffs_x)
+                               + len(fit.coeffs_y) + 4),
+                           scored, fit.cost, fit.start_index)
+    except (ValueError, RuntimeError, TypeError) as exc:
+        return failed(clean_x, clean_y, f"{type(exc).__name__}: {exc}")
+
+
 def nrmse(pred: np.ndarray, true: np.ndarray) -> float:
     """RMSE normalized by the held-out amplitude (max - min)."""
     pred_arr = np.asarray(pred, dtype=float)
