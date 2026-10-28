@@ -66,7 +66,7 @@ Mean B vs A; "beat" = lower held-out NRMSE.
 
 | Clip | A held-NRMSE | B held-NRMSE (mean of 3) | Beats A | Terms found | Cost |
 |---|---|---|---|---|---|
-| H hero (tossed ball, 20 pts) | 0.732 | 0.399 (0.490 / 0.187 / 0.519) | 3/3 | drag family (`abs(v)*v` ± `q`, `sign(v)`) | ~$0.045 |
+| H hero (tossed ball, 20 pts) | 0.732 | 0.399 (0.490 / 0.187 / 0.519) | 3/3 | r1 `1,q,abs(v)*v`, r2 `1,abs(v)*v`, r3 `1,q,v,sign(v)` | ~$0.045 |
 | N negative control (pendulum, 215 pts) | 0.041 | 0.037 (0.037 / 0.037 / 0.037) | 3/3 (worse: see below) | spurious `v**3` + `sign(v)` every repeat; r1/r2 are unsubmitted fallbacks† | ~$0.098 |
 | S synthetic tracked (30 pts) | 0.062 | 0.005 (0.004 / 0.008 / 0.004) | 3/3 | true `abs(v)*v` 1/3; `q*v` distractor 2/3 | ~$0.074 |
 
@@ -85,7 +85,7 @@ outcomes, not as Spark endorsements.
 Same frozen conditions, stricter loop: screen-then-tight fits (15 s loop
 budget, 5 s screens, shared memo, 8 fit-call cap), submit guard v2
 (≥2% held-NRMSE **and** BIC **and** train-within-5%), repeats H:3 N:5
-S:5. 13 repeats in ~11 min (≈ $0.44). G5 RED stands; v2 is a separate
+S:5. 13 repeats in ~10 min (≈ $0.44; S-r1 close 00:16:45 → files close 00:23:03). G5 RED stands; v2 is a separate
 experiment reported side by side.
 
 | Clip | A held-NRMSE | B held-NRMSE | Beats A | Terms found | Verdict |
