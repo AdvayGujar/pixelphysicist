@@ -121,3 +121,36 @@ def test_loop_cost_cap_stops_rounds(tmp_path) -> None:  # type: ignore[no-untype
     result = S.run_loop(tools, pricey, max_rounds=6, cost_cap_usd=0.50)
     assert result.rounds < 6
     assert "cost cap" in result.stopped_reason
+
+
+def test_system_prompt_guides_sparse_replacement() -> None:
+    assert "sparser version" in S.SYSTEM_PROMPT  # Day-5 H pilot: additive drag fails to integrate
+    assert "submit_model promptly" in S.SYSTEM_PROMPT  # Day-5 H2: submit before more plots
+
+
+def test_loop_plot_rounds_do_not_burn_stagnation(tmp_path) -> None:  # type: ignore[no-untyped-def]
+    """Plot-only rounds are diagnosis, not failed improvement (Day-5 H2).
+
+    Script: worse fit, plot, same worse fit, drag fit, submit. Old logic
+    stopped at the end of round 3 (stagnant==2) and never submitted; the
+    fix skips plot rounds so the drag fit in round 4 still runs.
+    """
+    tools = make_tools(tmp_path)
+    rounds = [
+        response(call("fit_model",
+                      {"terms": ["v**2"], "rationale": "unsigned square"})),
+        response(call("plot_residuals",
+                      {"model_id": "model-0", "versus": "t"})),
+        response(call("fit_model",
+                      {"terms": ["v**2"], "rationale": "same again"})),
+        response(call("fit_model",
+                      {"terms": ["1", "abs(v)*v"],
+                       "rationale": "sparse quadratic drag"})),
+        response(call("submit_model",
+                      {"model_id": "model-3",
+                       "explanation": "drag beats baseline on held-out"})),
+    ]
+    result = S.run_loop(tools, lambda messages, tools_: rounds.pop(0))
+    assert result.submitted
+    assert result.terms == ["1", "abs(v)*v"]
+    assert result.stopped_reason == "submitted"

@@ -16,6 +16,8 @@ results/*.json
 !results/baseline.json
 !results/day4.json
 !results/day4_diag.json
+!results/ablation.json
+!results/ablation.csv
 data/clips/*
 data/synthetic/*
 !data/clips/.gitkeep

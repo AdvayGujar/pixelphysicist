@@ -9,7 +9,10 @@ to the observed positions.
 from __future__ import annotations
 
 import ast
+import signal
+import threading
 import time
+from contextlib import contextmanager
 from dataclasses import dataclass, field
 
 import numpy as np
@@ -43,6 +46,32 @@ SHOOT_XTOL = 1e-6
 SHOOT_GTOL = 1e-6
 DEFAULT_FIT_BUDGET_S = 60.0
 BLOWUP_RESIDUAL = 1e6
+# One ODE integration must never take this long on our windows (normal
+# sims are ~ms); anything slower is a stiff-solver stall inside solve_ivp,
+# which the per-fit deadline cannot interrupt. Abort the sim, not the fit.
+SIM_TIMEOUT_S = 5.0
+
+
+@contextmanager
+def _sim_time_limit(seconds: float):
+    """Abort a hanging solve_ivp via SIGALRM (main thread only)."""
+    if seconds <= 0 or threading.current_thread() is not threading.main_thread():
+        yield
+        return
+    if not hasattr(signal, "SIGALRM"):
+        yield
+        return
+
+    def _handler(_signum, _frame):
+        raise TimeoutError(f"ODE integration exceeded {seconds}s")
+
+    previous = signal.signal(signal.SIGALRM, _handler)
+    signal.setitimer(signal.ITIMER_REAL, seconds)
+    try:
+        yield
+    finally:
+        signal.setitimer(signal.ITIMER_REAL, 0.0)
+        signal.signal(signal.SIGALRM, previous)
 
 
 @dataclass
@@ -186,8 +215,11 @@ def simulate(terms: list[str], coeffs: np.ndarray,
              t: np.ndarray, state0: tuple[float, float]) -> tuple[np.ndarray, np.ndarray]:
     """Integrate ``q'' = sum c_i phi_i`` from ``(q0, v0)``; ``(q, v)`` at ``t``.
 
-    DOP853 by default; terms calling ``sign`` switch to BDF first because the
-    discontinuity is stiff. The other method is the fallback either way.
+    DOP853 by default; terms calling ``sign`` use BDF only because the
+    discontinuity is stiff -- falling back to explicit DOP853 after a BDF
+    failure hangs it in microscopic rk_steps on the discontinuity
+    (Day-5 N pilot: one solve_ivp stuck >90 s, fit never returned).
+    A BDF failure therefore raises at once; the caller treats it as data.
     """
     clean = validate_terms(list(terms))
     gains = np.asarray(coeffs, dtype=float)
@@ -208,10 +240,18 @@ def simulate(terms: list[str], coeffs: np.ndarray,
         return [vel, float(np.asarray(total))]
 
     stiff_first = _uses_sign(clean)
-    methods = ["BDF", "DOP853"] if stiff_first else ["DOP853", "BDF"]
+    # Stiff (sign) terms: BDF only, looser tolerances (discontinuity caps
+    # achievable accuracy; 1e-6/1e-9 still far below NRMSE needs).
+    # Smooth terms: DOP853 first, BDF fallback (unchanged).
+    methods = ["BDF"] if stiff_first else ["DOP853", "BDF"]
     for method in methods:
-        sol = solve_ivp(rhs, (t_arr[0], t_arr[-1]), list(state0), method=method,
-                        t_eval=t_arr, rtol=1e-9, atol=1e-12)
+        rtol, atol = (1e-6, 1e-9) if (stiff_first and method == "BDF") else (1e-9, 1e-12)
+        try:
+            with _sim_time_limit(SIM_TIMEOUT_S):
+                sol = solve_ivp(rhs, (t_arr[0], t_arr[-1]), list(state0), method=method,
+                                t_eval=t_arr, rtol=rtol, atol=atol)
+        except TimeoutError as exc:
+            raise RuntimeError(f"integration timed out for terms {clean}: {exc}") from None
         if sol.success and np.all(np.isfinite(sol.y)):
             return np.asarray(sol.y[0]), np.asarray(sol.y[1])
     raise RuntimeError(f"integration failed for terms {clean}")
@@ -468,10 +508,18 @@ def simulate_projectile(terms_x: list[str], terms_y: list[str],
         return [vx, vy, float(np.asarray(ax)), float(np.asarray(ay))]
 
     stiff_first = _uses_sign(clean_x + clean_y)
-    methods = ["BDF", "DOP853"] if stiff_first else ["DOP853", "BDF"]
+    # Same stiff-only-BDF rule as the 1-DOF simulate: no DOP853 fallback
+    # after a BDF failure on discontinuous terms (hangs in rk_step).
+    methods = ["BDF"] if stiff_first else ["DOP853", "BDF"]
     for method in methods:
-        sol = solve_ivp(rhs, (t_arr[0], t_arr[-1]), list(state0), method=method,
-                        t_eval=t_arr, rtol=1e-9, atol=1e-12)
+        rtol, atol = (1e-6, 1e-9) if (stiff_first and method == "BDF") else (1e-9, 1e-12)
+        try:
+            with _sim_time_limit(SIM_TIMEOUT_S):
+                sol = solve_ivp(rhs, (t_arr[0], t_arr[-1]), list(state0), method=method,
+                                t_eval=t_arr, rtol=rtol, atol=atol)
+        except TimeoutError as exc:
+            raise RuntimeError(
+                f"integration timed out for terms {clean_x} / {clean_y}: {exc}") from None
         if sol.success and np.all(np.isfinite(sol.y)):
             return (np.asarray(sol.y[0]), np.asarray(sol.y[1]),
                     np.asarray(sol.y[2]), np.asarray(sol.y[3]))

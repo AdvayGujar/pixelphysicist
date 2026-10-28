@@ -115,7 +115,11 @@ motion. Candidate missing terms, prefer these before free-form proposals:
 abs(v)*v (quadratic drag), sign(v) (Coulomb friction), q*v, v**3,
 sin(q)*v, cos(q)*v. You may propose any other term in the same grammar
 (q, v, numbers, + - * / **, sin cos tanh sign abs sqrt exp), at most 8
-terms total.
+terms total. Replace, do not just add: the baseline's unsigned v**2 is
+often the wrong term, so try each candidate INSTEAD of v**2 (e.g.
+[1, abs(v)*v]) as well as added to the baseline. If a fit returns an
+integration error, retry a sparser version carrying the same new term
+(drop q/v/v**2 first) before moving on.
 
 Reading residuals (observed - predicted) on the fit window:
 - residual proportional to v suggests viscous drag (a v term),
@@ -131,8 +135,11 @@ Rules:
 - Prefer fewer terms: selection uses held-out NRMSE and BIC, so an extra
   term must earn its place on motion the fit never saw.
 - submit_model is rejected unless the model beats the baseline by at
-  least 2% held-out NRMSE or on BIC. If nothing beats the baseline,
-  submit the baseline itself and explain why the baseline suffices.
+  least 2% held-out NRMSE or on BIC. When a fitted model beats the
+  baseline, call submit_model promptly with the physical explanation;
+  do not delay submission for extra plots. If nothing beats the
+  baseline, submit the baseline itself and explain why the baseline
+  suffices.
 - Finish by calling submit_model. Do not end with a plain-text answer."""
 
 
@@ -677,6 +684,12 @@ def run_loop(tools: Any, chat_fn: Callable[..., Any],
         if tools.submitted_id is not None:
             stopped = "submitted"
             break
+        # Plot-only rounds are diagnosis, not failed improvement: they must
+        # not consume the 2-round stagnation budget (Day-5 pilot H2: Spark
+        # found the winning model in round 2, plotted in round 4, and was
+        # stopped before submitting).
+        if not any(c.function.name == "fit_model" for c in tool_calls):
+            continue
         current_best = tools.models[tools.best_model_id()].scored.held_nrmse
         if math.isfinite(current_best) and current_best < 0.98 * best_seen:
             best_seen, stagnant = current_best, 0

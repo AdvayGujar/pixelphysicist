@@ -183,3 +183,12 @@ def test_weak_init_rejects_nonfinite_basis() -> None:
     q = np.linspace(-1.0, 1.0, 21)  # hits q == 0 exactly: 1/q blows up
     with pytest.raises(ValueError, match="non-finite"):
         physics.weak_init(["1/q"], t, q)
+
+
+def test_sim_time_limit_aborts_hanging_call() -> None:
+    """The SIGALRM guard (Day-5 N pilot) must fire inside a slow call."""
+    import time
+
+    with pytest.raises(TimeoutError, match="exceeded"):
+        with physics._sim_time_limit(0.05):
+            time.sleep(0.5)
