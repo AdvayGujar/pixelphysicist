@@ -54,8 +54,9 @@ Built and verified:
   below. G5 is RED: the hero claim holds, the negative control and the
   exact-term recovery do not.
 
-Not built yet: the one-command `pixelphys run …` wiring, the report and
-ghost-overlay renderer, and the demo video.
+Not built yet: the demo video. (Shipped since: the one-command
+`pixelphys run …` wiring, the report and ghost-overlay renderer, the
+equation graph, and the replay renderer.)
 
 ## Ablation (Day 5, `results/ablation.csv`)
 
@@ -131,28 +132,24 @@ truth on this noisy realization (BIC still prefers the truth, −65.6 vs
 
 ## Seeing the equation (report visual, lands with the renderer)
 
-The intended main output of a run is a single graph, not a table of numbers.
+The main output of a run is a single graph, not a table of numbers.
 On the same axes it will show the measured trajectory as points, the baseline
 model's curve, and the final model's curve continued (dashed) into motion
 the fit never saw — with the discovered equation, its fitted coefficients,
 and both models' held-out NRMSE written on the graph itself. If the final
 curve peels away from the held-out points, the graph says so; that is the
-validation, not a decoration. (The residual plots Spark reads during a run
-already exist; the combined equation graph is part of the Day-6 report.)
+validation, not a decoration.
 
-## MVP-2: one-go projectile (extension window OPENED 2026-10-29)
+## One-go projectile replay
 
-Owner decision: ahead of schedule with a Nov 4 deadline, the G5-freeze
-condition is waived; sequencing discipline applies instead (G6 core
-first, phases A→B→C each droppable, hard stop Nov 1 EOD, Nov 2 demo-only).
-Status: Phase A one-go `pixelphys run` works on the bundled synthetic clip
-(`runs/cli_synth_check`: `model.json`, equation graph, `report.html`,
-`overlay.mp4`); Phase B gate tests green with the real-clip application
-reporting gravity-only (drag loses 0.77 vs 0.066 on 20-pt hero arcs —
-consistent with the 1-DOF verdict); Phase C replay renderer built
-(`render_replay_2d`, offline MP4) with asset `runs/mvp2_replay.mp4`
-re-flying the synthetic drag fit. All replays are labelled "fitted model",
-throw-plane only; no realtime or depth claim anywhere.
+A finished throw clip goes in; out come the fitted projectile equations,
+the equation graph, a report, and a replay video in which a rendered ball
+re-flies the *fitted* equations — never the tracked points. It is the same
+pipeline in two coupled coordinates with the same held-out validation,
+plus an offline renderer. Built-in limits: a batch post-capture flow
+(tens of seconds, not realtime); a monocular clip determines the throw
+plane only, so every replay is labelled "fitted model" with no depth
+claim; and where drag is not identifiable the report says gravity-only.
 
 ## Quickstart
 
