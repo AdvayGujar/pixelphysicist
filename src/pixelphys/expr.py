@@ -90,6 +90,8 @@ def validate_term(term: str) -> str:
 
 def validate_terms(terms: list[str]) -> list[str]:
     """Check a term library: 1..MAX_TERMS valid, non-duplicate terms."""
+    if isinstance(terms, str) or not isinstance(terms, (list, tuple)):
+        raise ValueError(f"terms must be a list of strings, got {type(terms).__name__}")
     if not 1 <= len(terms) <= MAX_TERMS:
         raise ValueError(f"need 1..{MAX_TERMS} terms, got {len(terms)}")
     clean = [validate_term(t) for t in terms]

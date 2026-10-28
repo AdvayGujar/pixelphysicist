@@ -105,6 +105,22 @@ def test_score_candidate_converts_failure_to_data() -> None:
     assert not empty.ok and "held-out" in empty.error
 
 
+def test_rollout_score_exact_truth_near_zero() -> None:
+    """Exact coefficients on the synthetic clip must score ~0.
+
+    Regression: the scorer once started the tail integration with the t[0]
+    state, shifting the trajectory 3 frames and scoring 0.23 for truth.
+    """
+    truth = load_synthetic_truth()
+    t = np.array(truth["t"])
+    q = np.array(truth["q"])
+    held, n = physics.rollout_score(
+        ["1", "abs(v)*v"],
+        np.array([-truth["params"]["gravity"], -truth["params"]["drag"]]), t, q)
+    assert held < 1e-6
+    assert n == len(t) - 3
+
+
 def test_nrmse_perfect_zero_and_degenerate_guards() -> None:
     a = np.array([1.0, 2.0, 3.0])
     assert physics.nrmse(a, a) == 0.0

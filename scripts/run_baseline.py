@@ -11,6 +11,7 @@ from __future__ import annotations
 
 import argparse
 import json
+import math
 import sys
 from datetime import date
 from pathlib import Path
@@ -29,9 +30,11 @@ DRAG = ["1", "abs(v)*v"]
 
 def load_free_flight(fixture: str, axis: str, trim: bool) -> tuple[np.ndarray, np.ndarray]:
     obs = T.load_observations(FIXTURES / fixture)
+    gaps = np.diff([o.t for o in obs])
+    fps = 1.0 / float(np.median(gaps))
     obs = T.clean_observations(obs)
     obs = max(T.split_by_gaps(obs), key=len)
-    t, cx, cy = T.resample_uniform(obs, 30.0)
+    t, cx, cy = T.resample_uniform(obs, fps)
     raw = cx if axis == "x" else cy
     q = T.rest_relative_q(T.smooth_position(raw)) if axis == "x" \
         else T.vertical_q(T.smooth_position(raw))
@@ -90,19 +93,35 @@ def main(argv: list[str] | None = None) -> int:
     for name, terms in [("baseline", list(P.BASELINE_TERMS)),
                         ("gravity-only", FRICTIONLESS),
                         ("drag-term", DRAG)]:
-        fit = P.fit_terms(terms, t5, q5)
+        try:
+            fit = P.fit_terms(terms, t5, q5, budget_s=60.0)
+        except (ValueError, RuntimeError) as exc:
+            rows.append({
+                "clip": "hero-take4", "protocol": "cross-take-fit-take5",
+                "model": name, "terms": terms, "ok": False,
+                "coeffs": [float("nan")] * len(terms),
+                "q0": float("nan"), "v0": float("nan"),
+                "train_rmse": float("inf"), "held_nrmse": float("inf"),
+                "bic": float("inf"), "n_fit": len(q5), "n_scored": 0,
+                "cost": float("inf"), "start_index": -1,
+                "error": f"{type(exc).__name__}: {exc}",
+            })
+            print(f"hero-take4  x-take {name:8s} FIT FAILED: {exc}", flush=True)
+            continue
         held, n_scored = P.rollout_score(list(fit.terms), fit.coeffs, t4, q4)
+        ok = math.isfinite(held)
         train_pred, _ = P.simulate(list(fit.terms), fit.coeffs, t5, (fit.q0, fit.v0))
         rss = float(np.sum((train_pred - q5) ** 2))
         rows.append({
             "clip": "hero-take4", "protocol": "cross-take-fit-take5",
-            "model": name, "terms": list(fit.terms), "ok": True,
+            "model": name, "terms": list(fit.terms), "ok": ok,
             "coeffs": [float(c) for c in fit.coeffs],
             "q0": fit.q0, "v0": fit.v0,
             "train_rmse": float(np.sqrt(rss / len(q5))), "held_nrmse": held,
             "bic": P.bic(len(q5), rss, len(fit.terms) + 2),
             "n_fit": len(q5), "n_scored": n_scored,
-            "cost": fit.cost, "start_index": fit.start_index, "error": None,
+            "cost": fit.cost, "start_index": fit.start_index,
+            "error": None if ok else "non-finite cross-take rollout",
         })
         print(f"hero-take4  x-take {name:8s} held {held:.4f} coeffs "
               f"{np.round(fit.coeffs, 4)}", flush=True)

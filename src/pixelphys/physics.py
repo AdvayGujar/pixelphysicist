@@ -347,8 +347,8 @@ def score_candidate(terms: list[str], t_fit: np.ndarray, q_fit: np.ndarray,
                          bic=bic(len(t_fit_arr), rss, len(clean) + 2),
                          n_scored=scored, cost=fit.cost,
                          start_index=fit.start_index)
-    except (ValueError, RuntimeError) as exc:
-        clean = locals().get("clean", list(terms))
+    except (ValueError, RuntimeError, TypeError) as exc:
+        clean = locals().get("clean", list(terms) if isinstance(terms, list) else [])
         return failed(clean, f"{type(exc).__name__}: {exc}")
 
 
@@ -379,10 +379,15 @@ def rollout_score(terms: list[str], coeffs: np.ndarray,
 
         anchor = (float(q_arr[0]), float(estimate_velocity(t_arr, q_arr)[0]))
         ic = least_squares(ic_residual, np.array(anchor)).x
-        tail_t, tail_q = t_arr[n_ic:], q_arr[n_ic:]
-        scored = min(max(int(np.searchsorted(tail_t, tail_t[0] + horizon_s)), 1),
-                     len(tail_t))
-        pred, _ = simulate(clean, gains, tail_t[:scored], (float(ic[0]), float(ic[1])))
+        # The refit state lives at t_arr[0]: integrate the FULL grid from it
+        # and slice the scored tail. Starting the integration at the tail
+        # with the t[0] state silently shifts the trajectory by ic_points
+        # frames and corrupts every cross-take number.
+        full, _ = simulate(clean, gains, t_arr, (float(ic[0]), float(ic[1])))
+        tail_q = q_arr[n_ic:]
+        scored = min(max(int(np.searchsorted(t_arr[n_ic:], t_arr[n_ic] + horizon_s)), 1),
+                     len(tail_q))
+        pred = full[n_ic:n_ic + scored]
         if not np.all(np.isfinite(pred)):
             return float("inf"), scored
         return nrmse(pred, tail_q[:scored]), scored
