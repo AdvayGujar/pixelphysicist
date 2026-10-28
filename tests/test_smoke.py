@@ -77,6 +77,7 @@ def test_dotenv_loader_respects_no_override(tmp_path, monkeypatch) -> None:  # t
     dotenv = tmp_path / ".env"
     dotenv.write_text("MODEL_API_KEY=from-file\n")
     monkeypatch.setattr(config, "PROJECT_ROOT", tmp_path)
+    monkeypatch.delenv("PIXELPHYS_NO_DOTENV", raising=False)
     monkeypatch.delenv("MODEL_API_KEY", raising=False)
     monkeypatch.setenv("FROM_TEST", "x")
     config.load_dotenv()
@@ -151,6 +152,94 @@ def test_compute_cost_usd() -> None:
 
     assert compute_cost_usd(1_000_000, 1_000_000) == 5.5
     assert compute_cost_usd(0, 0) == 0.0
+
+
+def test_validate_observations_rejects_bad_streams() -> None:
+    import pytest
+
+    from pixelphys.tracking import Observation, validate_observations
+
+    def obs(i: int, cx: float = 1.0) -> Observation:
+        return Observation(i, i / 30.0, cx, 2.0, (0.0, 0.0, 3.0, 3.0), 10.0, 1.0)
+
+    assert len(validate_observations([obs(0), obs(1)])) == 2
+    with pytest.raises(ValueError, match="no observations"):
+        validate_observations([])
+    with pytest.raises(ValueError, match="non-finite"):
+        validate_observations([obs(0, float("nan"))])
+    with pytest.raises(ValueError, match="strictly increasing"):
+        validate_observations([obs(1), obs(1)])
+    with pytest.raises(ValueError, match="negative mask area"):
+        validate_observations([Observation(0, 0.0, 1.0, 2.0,
+                                           (0.0, 0.0, 3.0, 3.0), -1.0, 1.0)])
+
+
+def test_calibrate_scale_and_pendulum_angle() -> None:
+    import numpy as np
+
+    from pixelphys import calibrate, trajectory as traj
+
+    assert calibrate.to_meters([100.0, 250.0], 250.0) == [0.4, 1.0]
+    assert calibrate.to_meters([100.0], None) == [100.0]
+    # Bob directly below the pivot is angle 0; displaced right is positive.
+    angles = traj.pendulum_angle(np.array([10.0, 20.0]),
+                                 np.array([20.0, 20.0]), (10.0, 10.0))
+    assert angles[0] == 0.0
+    assert angles[1] > 0.7
+
+
+def test_retries_only_transient_errors() -> None:
+    import pytest
+
+    from pixelphys import meta
+
+    attempts = {"n": 0}
+
+    def bad_request() -> None:
+        attempts["n"] += 1
+        raise ValueError("programming bug, not a transient failure")
+
+    with pytest.raises(RuntimeError, match="after 1 attempt"):
+        meta._with_retries("probe", bad_request)
+    assert attempts["n"] == 1
+
+    class RateLimited(Exception):
+        status_code = 429
+
+    def flaky() -> str:
+        attempts["n"] += 1
+        if attempts["n"] < 3:
+            raise RateLimited("slow down")
+        return "ok"
+
+    attempts["n"] = 0
+    assert meta._with_retries("probe", flaky) == "ok"
+    assert attempts["n"] == 3
+
+
+def test_color_tracker_recovers_synthetic_fixture() -> None:
+    """Offline fallback evidence: HSV tracker on the committed synthetic clip."""
+    import json
+    import statistics
+    from pathlib import Path as _Path
+
+    from pixelphys.synthetic import FRAME_W, GROUND_Y_PX, PX_PER_M
+    from pixelphys.tracking import (
+        SYNTHETIC_DARK_HIGH,
+        SYNTHETIC_DARK_LOW,
+        track_color_clip,
+    )
+
+    root = _Path(__file__).resolve().parent / "fixtures"
+    truth = json.loads((root / "toss_drag.json").read_text())
+    obs = track_color_clip(root / "toss_drag.mp4",
+                           SYNTHETIC_DARK_LOW, SYNTHETIC_DARK_HIGH)
+    expected = [(FRAME_W // 2, GROUND_Y_PX - q * PX_PER_M) for q in truth["q"]]
+    assert len(obs) == len(expected)
+    errs = [abs(o.cx - ex) + abs(o.cy - ey)
+            for o, (ex, ey) in zip(obs, expected)]
+    assert statistics.mean(errs) <= 2.0, errs
+    assert max(errs) <= 4.0, max(errs)
 
 
 def test_synthetic_tracker_accuracy_from_fixtures() -> None:

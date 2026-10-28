@@ -29,11 +29,23 @@ def compute_cost_usd(prompt_tokens: int, completion_tokens: int) -> float:
             + completion_tokens * SPARK_OUTPUT_USD_PER_MTOK) / 1_000_000
 
 
+_RETRYABLE_TYPE_NAMES = {
+    "APIConnectionError", "APITimeoutError", "ConnectionError",
+    "TimeoutError", "ConnectTimeout", "ReadTimeout",
+}
+
+
 def _is_retryable(exc: Exception) -> bool:
+    """Retry only transient failures: 429/5xx, or a connection/timeout error.
+
+    Programming errors (TypeError, ValueError, ...) carry no status code but
+    must fail immediately, not burn MAX_ATTEMPTS repeats.
+    """
     status = getattr(exc, "status_code", None)
-    if status is None:
-        return True
-    return status == 429 or status >= 500
+    if status is not None:
+        return status == 429 or status >= 500
+    return type(exc).__name__ in _RETRYABLE_TYPE_NAMES or isinstance(
+        exc, (ConnectionError, TimeoutError))
 
 
 @dataclass(frozen=True)
@@ -86,7 +98,9 @@ def _usage_of(response: Any) -> tuple[int, int]:
 
 def _with_retries(label: str, func: Any, *args: Any, **kwargs: Any) -> Any:
     last_error = ""
+    attempts = 0
     for attempt in range(1, MAX_ATTEMPTS + 1):
+        attempts = attempt
         try:
             return func(*args, **kwargs)
         except Exception as exc:  # noqa: BLE001 - retried, then recorded
@@ -94,7 +108,7 @@ def _with_retries(label: str, func: Any, *args: Any, **kwargs: Any) -> Any:
             if not _is_retryable(exc) or attempt == MAX_ATTEMPTS:
                 break
             time.sleep(BACKOFF_S * attempt)
-    raise RuntimeError(f"{label} failed after {MAX_ATTEMPTS} attempts: {last_error}")
+    raise RuntimeError(f"{label} failed after {attempts} attempt(s): {last_error}")
 
 
 def get_client() -> Any:

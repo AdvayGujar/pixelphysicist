@@ -28,6 +28,11 @@ def build_parser() -> argparse.ArgumentParser:
                         help="Cut to the free-flight window (launch to first impact).")
     parser.add_argument("--axis", choices=["x", "y"], default="y",
                         help="Which image axis is the 1-DOF coordinate (pendulum swings in x).")
+    parser.add_argument("--scale", type=float, default=None,
+                        help="Pixels per metre (M5): q is reported in metres.")
+    parser.add_argument("--pivot", default=None,
+                        help="Pendulum pivot as X,Y in pixels; with --axis x, "
+                             "q becomes the swing angle in radians (M5).")
     parser.add_argument("--out", required=True)
     return parser
 
@@ -56,9 +61,26 @@ def main(argv: list[str] | None = None) -> int:
     obs = max(runs, key=len)
     print(f"using longest consecutive run: {len(obs)} of {sum(len(r) for r in runs)} obs")
     t, cx, cy = traj.resample_uniform(obs, fps)
-    raw = cx if args.axis == "x" else cy
-    q = traj.rest_relative_q(traj.smooth_position(raw)) if args.axis == "x" \
-        else traj.vertical_q(traj.smooth_position(raw))
+    import numpy as np
+
+    from pixelphys import calibrate
+
+    if args.pivot is not None:
+        if args.axis != "x":
+            raise SystemExit("--pivot applies to the pendulum (--axis x)")
+        px, py = (float(v) for v in args.pivot.split(","))
+        q = traj.pendulum_angle(traj.smooth_position(cx),
+                                traj.smooth_position(cy), (px, py))
+        unit = "rad"
+    elif args.axis == "x":
+        q = traj.rest_relative_q(traj.smooth_position(cx))
+        unit = "px"
+    else:
+        q = traj.vertical_q(traj.smooth_position(cy))
+        unit = "px"
+    if args.scale is not None and unit == "px":
+        q = np.array(calibrate.to_meters(list(q), args.scale))
+        unit = "m"
     if args.trim:
         start, end = traj.trim_free_flight(t, q)
         t, q = t[start:end], q[start:end]
@@ -71,7 +93,7 @@ def main(argv: list[str] | None = None) -> int:
     ax.axvline(t_held[0], linestyle="--", label="fit/held-out split")
     ax.plot(t_held, q_held, linewidth=2.5, label="held-out")
     ax.set_xlabel("t (s)")
-    ax.set_ylabel("q (px, up positive)")
+    ax.set_ylabel(f"q ({unit})")
     ax.legend()
     out = Path(args.out)
     out.parent.mkdir(parents=True, exist_ok=True)

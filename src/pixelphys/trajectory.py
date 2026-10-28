@@ -8,7 +8,7 @@ from typing import Any
 
 import numpy as np
 
-from .tracking import Observation
+from .tracking import Observation, validate_observations
 
 MIN_POINTS = 30
 SMOOTH_WINDOW = 7
@@ -17,6 +17,7 @@ FIT_FRAC = 0.6
 
 def clean_observations(obs: list[Observation]) -> list[Observation]:
     """Drop mask-area >3σ outliers. Requires MIN_POINTS survivors."""
+    validate_observations(obs)
     if len(obs) < MIN_POINTS:
         raise ValueError(f"need >= {MIN_POINTS} observations, got {len(obs)}")
     areas = np.array([o.mask_area for o in obs])

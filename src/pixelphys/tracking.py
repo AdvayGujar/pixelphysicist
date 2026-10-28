@@ -18,6 +18,26 @@ class Observation:
     confidence: float
 
 
+def validate_observations(obs: list[Observation]) -> list[Observation]:
+    """Boundary check: non-empty, finite, strictly increasing frames/time."""
+    import math
+
+    if not obs:
+        raise ValueError("no observations to validate")
+    for o in obs:
+        values = (o.cx, o.cy, o.mask_area, *o.bbox)
+        if not all(math.isfinite(v) for v in values):
+            raise ValueError(f"non-finite observation at frame {o.frame_idx}")
+        if o.mask_area < 0:
+            raise ValueError(f"negative mask area at frame {o.frame_idx}")
+    for prev, cur in zip(obs, obs[1:]):
+        if cur.frame_idx <= prev.frame_idx:
+            raise ValueError("frame indices must be strictly increasing")
+        if cur.t <= prev.t:
+            raise ValueError("observation times must be strictly increasing")
+    return obs
+
+
 def raster_centroid(raster: bytes, width: int, height: int) -> tuple[float, float, float] | None:
     """Mean x/y of set pixels plus area. None when the raster is empty."""
     import numpy as np
@@ -150,7 +170,7 @@ async def track_video(file_id: str, prompt: str, fps: float,
     from meta_sam_parser import parse_responses_stream, video_segmentation_format
 
     from .config import SAM_MODEL_ID, load_settings
-    from .meta import BACKOFF_S, MAX_ATTEMPTS, ApiCall, log_call
+    from .meta import BACKOFF_S, MAX_ATTEMPTS, ApiCall, _is_retryable, log_call
 
     async def once() -> Any:
         settings = load_settings()
@@ -175,6 +195,8 @@ async def track_video(file_id: str, prompt: str, fps: float,
             break
         except Exception as exc:  # noqa: BLE001 - retried, then recorded
             last_error = f"{type(exc).__name__}: {exc}"
+            if not _is_retryable(exc):
+                break
             if attempt_no < MAX_ATTEMPTS:
                 await asyncio.sleep(BACKOFF_S * attempt_no)
     if result is None:
