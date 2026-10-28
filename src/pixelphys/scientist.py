@@ -18,6 +18,7 @@ Protocol decisions carried in from Day 3 (see plan.md audit responses):
 from __future__ import annotations
 
 import base64
+import copy
 import json
 import math
 from dataclasses import dataclass, field
@@ -32,6 +33,13 @@ MENU_TERMS = ["abs(v)*v", "sign(v)", "q*v", "v**3", "sin(q)*v", "cos(q)*v"]
 MAX_ROUNDS = 6
 COST_CAP_USD = 0.50
 SUBMIT_IMPROVEMENT = 0.02  # beat baseline held-NRMSE by >= 2%, or win on BIC
+# Audit A3: the in-loop fit budget. Committed baseline runners keep 60 s
+# (P.DEFAULT_FIT_BUDGET_S); loop candidates that need more are not viable.
+LOOP_FIT_BUDGET_S = 15.0
+# Audit A4: screen-stage budget. One weak-init start, loose tolerances.
+SCREEN_BUDGET_S = 5.0
+# Audit A5: fit_model calls per loop, counted across rounds.
+MAX_FIT_CALLS = 8
 
 TOOL_SCHEMAS: list[dict[str, Any]] = [
     {
@@ -143,6 +151,46 @@ Rules:
 - Finish by calling submit_model. Do not end with a plain-text answer."""
 
 
+# Audit B6: v2 submit rule (AND, plus train check). Derived from the v1
+# prompt by exact replacement so the two can never drift apart silently.
+_V1_RULE = """- submit_model is rejected unless the model beats the baseline by at
+  least 2% held-out NRMSE or on BIC. When a fitted model beats the
+  baseline, call submit_model promptly with the physical explanation;
+  do not delay submission for extra plots. If nothing beats the
+  baseline, submit the baseline itself and explain why the baseline
+  suffices."""
+_V2_RULE = """- submit_model is rejected unless the model beats the baseline by at
+  least 2% held-out NRMSE AND on BIC, with train RMSE no worse than 5%
+  above the baseline's. A held-out win that loses on BIC or on train is
+  held-window luck, not physics: do not submit it; keep searching or
+  submit the baseline. When a fitted model beats the baseline on all
+  three, call submit_model promptly with the physical explanation;
+  do not delay submission for extra plots. If nothing beats the
+  baseline on all three, submit the baseline itself and explain why the
+  baseline suffices."""
+assert _V1_RULE in SYSTEM_PROMPT, "v1 submit rule drifted; fix _V1_RULE"
+V2_SYSTEM_PROMPT = SYSTEM_PROMPT.replace(_V1_RULE, _V2_RULE)
+
+_V1_SUBMIT_DESC = ("Submit a fitted model as the final answer. "
+                   "Rejected unless it beats the baseline by >= 2% "
+                   "held-out NRMSE or on BIC (submitting the "
+                   "baseline itself is always accepted).")
+
+
+def v2_schemas() -> list[dict[str, Any]]:
+    """Tool schemas with the v2 submit rule (audit B6)."""
+    schemas = copy.deepcopy(TOOL_SCHEMAS)
+    assert schemas[2]["function"]["name"] == "submit_model"
+    assert schemas[2]["function"]["description"] == _V1_SUBMIT_DESC, \
+        "v1 submit description drifted; fix _V1_SUBMIT_DESC"
+    schemas[2]["function"]["description"] = (
+        "Submit a fitted model as the final answer. "
+        "Rejected unless it beats the baseline by >= 2% held-out NRMSE "
+        "AND on BIC, with train RMSE within 5% of the baseline's "
+        "(submitting the baseline itself is always accepted).")
+    return schemas
+
+
 def _num(value: float) -> float | None:
     return float(value) if math.isfinite(value) else None
 
@@ -151,6 +199,7 @@ def _num(value: float) -> float | None:
 class _Entry:
     scored: Any  # P.ScoredFit (1-DOF) or P.ScoredFit2D (projectile mode)
     rationale: str = ""
+    tight: bool = False  # audit A4: screen entries become tight on submit/best
 
 
 class ScientistTools:
@@ -158,8 +207,11 @@ class ScientistTools:
 
     def __init__(self, t_fit: np.ndarray, q_fit: np.ndarray,
                  t_held: np.ndarray, q_held: np.ndarray,
-                 out_dir: Path, budget_s: float = P.DEFAULT_FIT_BUDGET_S,
-                 baseline_terms: list[str] | None = None) -> None:
+                 out_dir: Path, budget_s: float = LOOP_FIT_BUDGET_S,
+                 baseline_terms: list[str] | None = None,
+                 baseline: P.ScoredFit | None = None,
+                 fit_cache: dict[str, Any] | None = None,
+                 guard: str = "v1") -> None:
         self.t_fit = np.asarray(t_fit, dtype=float)
         self.q_fit = np.asarray(q_fit, dtype=float)
         self.t_held = np.asarray(t_held, dtype=float)
@@ -170,16 +222,32 @@ class ScientistTools:
         self._next_id = 0
         self.submitted_id: str | None = None
         self.submit_explanation = ""
-        baseline = P.score_candidate(list(baseline_terms or P.BASELINE_TERMS),
-                                     self.t_fit, self.q_fit,
-                                     self.t_held, self.q_held,
-                                     budget_s=budget_s)
-        self.baseline_id = self._register(baseline, "baseline library")
+        # Audit A1: memoize fits keyed by exact term tuple. Data is fixed
+        # per tools instance; the runner may share one dict across repeats
+        # of a condition. Values are {"screen": ..., "tight": ...}.
+        self._fit_cache: dict[str, Any] = fit_cache if fit_cache is not None else {}
+        # Audit B6: submit-guard version. "v1" is the Day-4/5 OR rule;
+        # "v2" requires held-NRMSE AND BIC AND train-within-5%.
+        if guard not in ("v1", "v2"):
+            raise ValueError(f"guard must be 'v1' or 'v2', got {guard!r}")
+        self.guard = guard
+        if baseline is None:
+            # Audit A2: the runner precomputes condition A once and passes
+            # it in, instead of refitting per repeat.
+            baseline = P.score_candidate(list(baseline_terms or P.BASELINE_TERMS),
+                                         self.t_fit, self.q_fit,
+                                         self.t_held, self.q_held,
+                                         budget_s=budget_s)
+            self.baseline_id = self._register(baseline, "baseline library", tight=True)
+        else:
+            self.baseline_id = self._register(baseline, "precomputed baseline",
+                                              tight=True)
 
-    def _register(self, scored: P.ScoredFit, rationale: str) -> str:
+    def _register(self, scored: P.ScoredFit, rationale: str,
+                  tight: bool = False) -> str:
         model_id = f"model-{self._next_id}"
         self._next_id += 1
-        self.models[model_id] = _Entry(scored, rationale)
+        self.models[model_id] = _Entry(scored, rationale, tight)
         return model_id
 
     @property
@@ -201,15 +269,71 @@ class ScientistTools:
             "menu_terms": MENU_TERMS,
         }
 
+    @staticmethod
+    def _cache_key(terms: Any) -> tuple[str, ...]:
+        if isinstance(terms, list) and all(isinstance(t, str) for t in terms):
+            return tuple(t.strip() for t in terms)
+        return ("__invalid__", repr(terms))
+
+    def _screen(self, terms: Any) -> P.ScoredFit:
+        """Cheap advisory fit: one weak-init start, loose tolerances."""
+        return P.score_candidate(terms, self.t_fit, self.q_fit,
+                                 self.t_held, self.q_held,
+                                 budget_s=SCREEN_BUDGET_S, fast=True)
+
+    def tighten(self, model_id: str) -> P.ScoredFit | None:
+        """Full-settings refit of a registered model; None when it fails.
+
+        Audit A4: only submitted / best models pay for tight scores.
+        Success replaces the entry so reported numbers stay comparable
+        to the Day-3/4/5 tight fits.
+        """
+        entry = self.models.get(model_id)
+        if entry is None or not entry.scored.ok or entry.tight:
+            return entry.scored if entry is not None and entry.scored.ok else None
+        tight = P.score_candidate(entry.scored.terms, self.t_fit, self.q_fit,
+                                  self.t_held, self.q_held,
+                                  budget_s=self.budget_s)
+        key = self._cache_key(entry.scored.terms)
+        slot = self._fit_cache.get(key)
+        if isinstance(slot, dict):
+            slot["tight"] = tight
+        else:
+            self._fit_cache[key] = {"screen": entry.scored, "tight": tight}
+        if tight.ok:
+            entry.scored = tight
+            entry.tight = True
+            return tight
+        return None
+
+    def best_bic(self) -> tuple[float | None, str | None]:
+        """Lowest BIC over ok models (audit B7: Spark's BIC frontier)."""
+        best_id: str | None = None
+        best_score = float("inf")
+        for model_id, entry in self.models.items():
+            scored = entry.scored
+            if scored.ok and math.isfinite(scored.bic) and scored.bic < best_score:
+                best_id, best_score = model_id, scored.bic
+        return (_num(best_score) if best_id is not None else None, best_id)
+
     def fit_model(self, terms: Any, rationale: str = "") -> dict[str, Any]:
-        scored = P.score_candidate(terms, self.t_fit, self.q_fit,
-                                   self.t_held, self.q_held,
-                                   budget_s=self.budget_s)
-        model_id = self._register(scored, rationale)
+        key = self._cache_key(terms)
+        slot = self._fit_cache.get(key)
+        tight_cached = (slot.get("tight") if isinstance(slot, dict) else None)
+        if tight_cached is not None and tight_cached.ok:
+            scored, screening = tight_cached, False
+        else:
+            screen = (slot.get("screen") if isinstance(slot, dict) else None)
+            if screen is None:
+                screen = self._screen(terms)
+                self._fit_cache[key] = {"screen": screen, "tight": None}
+            scored, screening = screen, True
+        model_id = self._register(scored, rationale, tight=not screening)
         base_nrmse = self.baseline.held_nrmse
         improvement = None
         if scored.ok and math.isfinite(base_nrmse) and base_nrmse > 0:
             improvement = (base_nrmse - scored.held_nrmse) / base_nrmse
+        best_bic, best_bic_id = self.best_bic()
         return {
             "model_id": model_id,
             "ok": scored.ok,
@@ -220,6 +344,9 @@ class ScientistTools:
             "bic": _num(scored.bic),
             "n_scored": scored.n_scored,
             "held_nrmse_improvement_vs_baseline": improvement,
+            "screening": screening,
+            "best_bic_so_far": best_bic,
+            "best_bic_model_id": best_bic_id,
             "error": scored.error,
         }
 
@@ -267,25 +394,60 @@ class ScientistTools:
             return {"accepted": False,
                     "error": f"model did not fit: {scored.error}"}
         base = self.baseline
-        if model_id != self.baseline_id and base.ok:
-            beats_nrmse = scored.held_nrmse <= (1.0 - SUBMIT_IMPROVEMENT) * base.held_nrmse
-            beats_bic = scored.bic < base.bic
-            if not (beats_nrmse or beats_bic):
+        if model_id == self.baseline_id or not base.ok:
+            self.submitted_id = model_id
+            self.submit_explanation = explanation
+            return {"accepted": True, "model_id": model_id,
+                    "screening": False,
+                    "terms": scored.terms,
+                    "coeffs": [_num(c) for c in scored.coeffs],
+                    "held_nrmse": _num(scored.held_nrmse),
+                    "bic": _num(scored.bic),
+                    "train_rmse": _num(scored.train_rmse)}
+        # Audit A4: the guard runs on tight scores, never on the screen.
+        tight = self.tighten(model_id)
+        if tight is None:
+            entry = self.models[model_id]
+            return {"accepted": False,
+                    "error": "tight refit failed: "
+                             f"{entry.scored.error or 'no tight score'}"}
+        scored = tight
+        beats_nrmse = scored.held_nrmse <= (1.0 - SUBMIT_IMPROVEMENT) * base.held_nrmse
+        beats_bic = scored.bic < base.bic
+        if self.guard == "v2":
+            train_ok = (math.isfinite(scored.train_rmse)
+                        and math.isfinite(base.train_rmse) and base.train_rmse > 0
+                        and scored.train_rmse <= 1.05 * base.train_rmse)
+            if not (beats_nrmse and beats_bic and train_ok):
                 return {
                     "accepted": False,
                     "error": "does not beat the baseline by >= 2% held-out "
-                             "NRMSE or on BIC",
+                             "NRMSE AND on BIC with train RMSE within 5%",
                     "held_nrmse": _num(scored.held_nrmse),
                     "baseline_held_nrmse": _num(base.held_nrmse),
                     "bic": _num(scored.bic),
                     "baseline_bic": _num(base.bic),
+                    "train_rmse": _num(scored.train_rmse),
+                    "baseline_train_rmse": _num(base.train_rmse),
                 }
+        elif not (beats_nrmse or beats_bic):
+            return {
+                "accepted": False,
+                "error": "does not beat the baseline by >= 2% held-out "
+                         "NRMSE or on BIC",
+                "held_nrmse": _num(scored.held_nrmse),
+                "baseline_held_nrmse": _num(base.held_nrmse),
+                "bic": _num(scored.bic),
+                "baseline_bic": _num(base.bic),
+            }
         self.submitted_id = model_id
         self.submit_explanation = explanation
         return {"accepted": True, "model_id": model_id,
+                "screening": False,
                 "terms": scored.terms,
                 "coeffs": [_num(c) for c in scored.coeffs],
-                "held_nrmse": _num(scored.held_nrmse), "bic": _num(scored.bic)}
+                "held_nrmse": _num(scored.held_nrmse), "bic": _num(scored.bic),
+                "train_rmse": _num(scored.train_rmse)}
 
     def best_model_id(self) -> str:
         """Lowest held-NRMSE fitted model (the baseline always qualifies)."""
@@ -406,7 +568,8 @@ class ProjectileTools:
     def __init__(self, t_fit: np.ndarray, x_fit: np.ndarray,
                  y_fit: np.ndarray, t_held: np.ndarray,
                  x_held: np.ndarray, y_held: np.ndarray,
-                 out_dir: Path, budget_s: float = P.DEFAULT_FIT_BUDGET_S,
+                 out_dir: Path, budget_s: float = LOOP_FIT_BUDGET_S,
+                 fit_cache: dict[str, Any] | None = None,
                  ) -> None:
         self.t_fit = np.asarray(t_fit, dtype=float)
         self.x_fit = np.asarray(x_fit, dtype=float)
@@ -420,6 +583,9 @@ class ProjectileTools:
         self._next_id = 0
         self.submitted_id: str | None = None
         self.submit_explanation = ""
+        # Audit A1/A3: same memo and loop-budget treatment as ScientistTools.
+        # Two-stage scoring (A4) and guard v2 (B6) are 1-DOF only for now.
+        self._fit_cache: dict[str, Any] = fit_cache if fit_cache is not None else {}
         baseline = P.score_projectile(P.PROJECTILE_BASELINE_X,
                                       P.PROJECTILE_BASELINE_Y,
                                       self.t_fit, self.x_fit, self.y_fit,
@@ -456,10 +622,17 @@ class ProjectileTools:
 
     def fit_model(self, terms_x: Any = None, terms_y: Any = None,
                   rationale: str = "", terms: Any = None) -> dict[str, Any]:
-        scored = P.score_projectile(terms_x, terms_y,
-                                    self.t_fit, self.x_fit, self.y_fit,
-                                    self.t_held, self.x_held, self.y_held,
-                                    budget_s=self.budget_s)
+        key = (ScientistTools._cache_key(terms_x),
+               ScientistTools._cache_key(terms_y))
+        cached = self._fit_cache.get(key)
+        if cached is not None and cached.ok:
+            scored = cached
+        else:
+            scored = P.score_projectile(terms_x, terms_y,
+                                        self.t_fit, self.x_fit, self.y_fit,
+                                        self.t_held, self.x_held, self.y_held,
+                                        budget_s=self.budget_s)
+            self._fit_cache[key] = scored
         model_id = self._register(scored, rationale)
         base_nrmse = self.baseline.held_nrmse
         improvement = None
@@ -573,12 +746,15 @@ def run_loop(tools: Any, chat_fn: Callable[..., Any],
              max_rounds: int = MAX_ROUNDS,
              cost_cap_usd: float = COST_CAP_USD,
              system_prompt: str | None = None,
-             schemas: list[dict[str, Any]] | None = None) -> ScientistResult:
+             schemas: list[dict[str, Any]] | None = None,
+             max_fit_calls: int = MAX_FIT_CALLS) -> ScientistResult:
     """Drive the scientist loop; never raises for model/tool failures.
 
     Works for both ScientistTools (1-DOF) and ProjectileTools (Section
     4.5b): pass PROJECTILE_SYSTEM_PROMPT and TOOL_SCHEMAS_2D for the
     projectile mode. Defaults preserve the 1-DOF behaviour.
+    Audit A5: at most ``max_fit_calls`` fit_model dispatches per loop;
+    further ones fail fast as data and are surfaced in the transcript.
     """
     projectile = isinstance(tools, ProjectileTools)
     summary = tools.summary()
@@ -629,6 +805,8 @@ def run_loop(tools: Any, chat_fn: Callable[..., Any],
     stagnant = 0
     best_seen = float("inf")
     rounds_used = 0
+    fit_calls = 0
+    fit_cap_hit = False
 
     for round_no in range(1, max_rounds + 1):
         rounds_used = round_no
@@ -664,7 +842,22 @@ def run_loop(tools: Any, chat_fn: Callable[..., Any],
                 arguments = json.loads(call.function.arguments or "{}")
             except json.JSONDecodeError:
                 arguments = {}
-            result = _dispatch(tools, call.function.name, arguments)
+            if call.function.name == "fit_model" and fit_calls >= max_fit_calls:
+                # Audit A5: fail fast as data; the API contract still
+                # needs one tool message per tool call.
+                result = {"model_id": None,
+                          "error": f"fit-call budget exhausted ({max_fit_calls} "
+                                   "fit_model calls per loop); inspect the fits "
+                                   "so far and submit."}
+                if not fit_cap_hit:
+                    fit_cap_hit = True
+                    transcript.append({"event": "fit_cap",
+                                       "limit": max_fit_calls,
+                                       "round": round_no})
+            else:
+                if call.function.name == "fit_model":
+                    fit_calls += 1
+                result = _dispatch(tools, call.function.name, arguments)
             transcript.append({"event": "tool", "round": round_no,
                                "name": call.function.name, "result": result})
             messages.append({"role": "tool", "tool_call_id": call.id,
@@ -701,7 +894,20 @@ def run_loop(tools: Any, chat_fn: Callable[..., Any],
 
     submitted = tools.submitted_id is not None
     final_id = tools.submitted_id or tools.best_model_id()
+    if fit_cap_hit and not submitted:
+        stopped += "; fit-call cap reached"
     final = tools.models[final_id].scored
+    tighten = getattr(tools, "tighten", None)
+    if callable(tighten):
+        # Audit A4: reported scores are always tight. Submitted models
+        # were tightened on submit; the fallback best is tightened here.
+        tight = tighten(final_id)
+        if tight is not None:
+            final = tight
+        elif not submitted:
+            final_id = tools.baseline_id
+            final = tools.models[final_id].scored
+            stopped += "; best model failed tight refit, fell back to baseline"
     if not submitted:
         stopped += "; submitted best-so-far model as fallback"
     if hasattr(final, "terms_x"):  # projectile mode

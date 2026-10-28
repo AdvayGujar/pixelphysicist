@@ -35,7 +35,10 @@ def run_g4(n_runs: int, effort: str, prefix: str) -> list[dict]:
     for i in range(1, n_runs + 1):
         out_dir = REPO / f"runs/{prefix}_g4_run{i}"
         (out_dir / "plots").mkdir(parents=True, exist_ok=True)
-        tools = S.ScientistTools(t[:cut], q[:cut], t[cut:], q[cut:], out_dir)
+        # Committed Day-4 behavior used the 60 s fit budget; keep it
+        # explicit now that the tools default to the loop budget.
+        tools = S.ScientistTools(t[:cut], q[:cut], t[cut:], q[cut:], out_dir,
+                                 budget_s=60.0)
         result = S.run_loop(tools, S.default_chat_fn(effort))
         ok_term = "abs(v)*v" in result.terms
         row = {
@@ -70,8 +73,10 @@ def run_g4b(n_runs: int, effort: str, prefix: str) -> list[dict]:
     for i in range(1, n_runs + 1):
         out_dir = REPO / f"runs/{prefix}_g4b_run{i}"
         (out_dir / "plots").mkdir(parents=True, exist_ok=True)
+        # Same 60 s preservation as the G4 path above.
         tools = S.ProjectileTools(t[:cut], x[:cut], y[:cut],
-                                  t[cut:], x[cut:], y[cut:], out_dir)
+                                  t[cut:], x[cut:], y[cut:], out_dir,
+                                  budget_s=60.0)
         result = S.run_loop(tools, S.default_chat_fn(effort),
                             system_prompt=S.PROJECTILE_SYSTEM_PROMPT,
                             schemas=S.TOOL_SCHEMAS_2D)

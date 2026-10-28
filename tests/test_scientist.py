@@ -154,3 +154,74 @@ def test_loop_plot_rounds_do_not_burn_stagnation(tmp_path) -> None:  # type: ign
     assert result.submitted
     assert result.terms == ["1", "abs(v)*v"]
     assert result.stopped_reason == "submitted"
+
+
+def test_fit_model_memoizes_identical_terms(tmp_path) -> None:  # type: ignore[no-untyped-def]
+    """Audit A1: a repeated fit returns the identical score in <0.1 s."""
+    import time
+
+    from pixelphys import physics as P
+
+    tools = make_tools(tmp_path)
+    first = tools.fit_model(["1", "abs(v)*v"], "quadratic drag")
+    assert first["ok"] and first["held_nrmse"] < 0.05
+    start = time.monotonic()
+    second = tools.fit_model(["1", "abs(v)*v"], "same again")
+    assert time.monotonic() - start < 0.1
+    assert second["held_nrmse"] == first["held_nrmse"]
+    assert second["bic"] == first["bic"]
+    assert P.ScoredFit is not None  # import check for guard tests below
+
+
+def test_precomputed_baseline_avoids_refit(tmp_path) -> None:  # type: ignore[no-untyped-def]
+    """Audit A2: a passed-in baseline is registered, never refit."""
+    from pixelphys import physics as P
+
+    t_fit, q_fit, t_held, q_held = synthetic_split()
+    base = P.score_candidate(list(P.BASELINE_TERMS), t_fit, q_fit, t_held, q_held)
+    tools = S.ScientistTools(t_fit, q_fit, t_held, q_held, tmp_path, baseline=base)
+    assert tools.baseline is base
+    assert tools.baseline_id == "model-0"
+
+
+def test_two_stage_screen_then_tight(tmp_path) -> None:  # type: ignore[no-untyped-def]
+    """Audit A4: fit_model reports the screen; submit tightens it."""
+    tools = make_tools(tmp_path)
+    fitted = tools.fit_model(["1", "abs(v)*v"], "quadratic drag")
+    assert fitted["ok"] and fitted["screening"] is True
+    assert fitted["best_bic_so_far"] is not None
+    accepted = tools.submit_model(fitted["model_id"], "drag fits held-out")
+    assert accepted["accepted"] and accepted["screening"] is False
+
+
+def test_submit_guard_v2_requires_all_three(tmp_path) -> None:  # type: ignore[no-untyped-def]
+    """Audit B6: v2 rejects an NRMSE-only win; v1 still accepts it."""
+    from pixelphys import physics as P
+
+    def tools_with_fake(guard: str):
+        t_fit, q_fit, t_held, q_held = synthetic_split()
+        tools = S.ScientistTools(t_fit, q_fit, t_held, q_held, tmp_path,
+                                 guard=guard)
+        base = tools.baseline
+        assert base.ok
+        mid = tools._register(P.ScoredFit(
+            ok=True, terms=["1", "v"], coeffs=np.array([0.0, -0.1]),
+            q0=0.0, v0=0.0, train_rmse=base.train_rmse * 1.01,
+            held_nrmse=base.held_nrmse * 0.5, bic=base.bic + 10.0,
+            n_scored=1, cost=0.0, start_index=0, error=None), "nrmse win only")
+        return tools, mid
+
+    tools_v2, mid_v2 = tools_with_fake("v2")
+    assert not tools_v2.submit_model(mid_v2, "x")["accepted"]
+    tools_v1, mid_v1 = tools_with_fake("v1")
+    assert tools_v1.submit_model(mid_v1, "x")["accepted"]
+
+
+def test_loop_fit_call_cap(tmp_path) -> None:  # type: ignore[no-untyped-def]
+    """Audit A5: fit calls beyond the cap fail fast and are surfaced."""
+    tools = make_tools(tmp_path)
+    always_fit = lambda messages, tools_: response(  # noqa: E731
+        call("fit_model", {"terms": ["v**2"], "rationale": "same again"}))
+    result = S.run_loop(tools, always_fit, max_rounds=6, max_fit_calls=2)
+    assert any(ev.get("event") == "fit_cap" for ev in result.transcript)
+    assert "fit-call cap reached" in result.stopped_reason

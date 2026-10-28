@@ -192,3 +192,14 @@ def test_sim_time_limit_aborts_hanging_call() -> None:
     with pytest.raises(TimeoutError, match="exceeded"):
         with physics._sim_time_limit(0.05):
             time.sleep(0.5)
+
+
+def test_score_candidate_fast_screen_is_advisory() -> None:
+    """Audit A4: the screen path returns a usable (not exact) score."""
+    truth = load_synthetic_truth()
+    t = np.array(truth["t"])
+    q = np.array(truth["q"])
+    cut = int(len(t) * 0.6)
+    screen = physics.score_candidate(["1", "abs(v)*v"], t[:cut], q[:cut],
+                                     t[cut:], q[cut:], fast=True)
+    assert screen.ok and screen.held_nrmse < 0.05

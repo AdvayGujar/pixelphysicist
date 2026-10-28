@@ -23,6 +23,7 @@ import json
 import sys
 from datetime import date
 from pathlib import Path
+from typing import Any
 
 import numpy as np
 
@@ -41,7 +42,8 @@ def split_60_40(t: np.ndarray, q: np.ndarray):
     return (t[:cut], q[:cut], t[cut:], q[cut:])
 
 
-def run_condition(name: str, repeats: int, effort: str, prefix: str) -> list[dict]:
+def run_condition(name: str, repeats: int, effort: str, prefix: str,
+                  guard: str = "v1") -> list[dict]:
     t, q = load_condition(name)
     t_fit, q_fit, t_held, q_held = split_60_40(t, q)
     rows: list[dict] = []
@@ -64,6 +66,9 @@ def run_condition(name: str, repeats: int, effort: str, prefix: str) -> list[dic
     print(f"{name}: A baseline held={base.held_nrmse:.4f} bic={base.bic:.1f} "
           f"(n_fit={len(t_fit)} n_held={len(t_held)})", flush=True)
 
+    # Audit A1: one memo dict shared across repeats of this condition
+    # (identical data and splits, so term-tuple keys are unambiguous).
+    fit_cache: dict[str, Any] = {}
     for i in range(1, repeats + 1):
         out_dir = REPO / f"runs/{prefix}_{name}_r{i}"
         existing = out_dir / "transcript.json"
@@ -100,8 +105,17 @@ def run_condition(name: str, repeats: int, effort: str, prefix: str) -> list[dic
         result, tools, attempt_error = None, None, ""
         for attempt in (1, 2):
             try:
-                tools = S.ScientistTools(t_fit, q_fit, t_held, q_held, out_dir)
-                result = S.run_loop(tools, S.default_chat_fn(effort))
+                # Audit A1/A2: shared memo plus the precomputed condition-A
+                # baseline instead of one refit per repeat.
+                tools = S.ScientistTools(t_fit, q_fit, t_held, q_held, out_dir,
+                                         baseline=base, fit_cache=fit_cache,
+                                         guard=guard)
+                if guard == "v2":
+                    result = S.run_loop(tools, S.default_chat_fn(effort),
+                                        system_prompt=S.V2_SYSTEM_PROMPT,
+                                        schemas=S.v2_schemas())
+                else:
+                    result = S.run_loop(tools, S.default_chat_fn(effort))
                 attempt_error = ""
                 break
             except RuntimeError as exc:
@@ -148,7 +162,11 @@ def run_condition(name: str, repeats: int, effort: str, prefix: str) -> list[dic
 
 
 def evaluate(rows: list[dict]) -> dict:
-    """G5 gate evaluation per plan Section 6 (amended Day-3 decision)."""
+    """G5 gate evaluation per plan Section 6 (amended Day-3 decision).
+
+    Majority rule scales with repeats: 5-repeat conditions need 3 wins,
+    3-repeat conditions need 2 (the pre-registered v1 bar).
+    """
     by_clip: dict[str, list[dict]] = {}
     for r in rows:
         by_clip.setdefault(r["clip"], []).append(r)
@@ -165,27 +183,28 @@ def evaluate(rows: list[dict]) -> dict:
         a_held = a[0]["held_nrmse"] if a else float("inf")
         b_mean = mean_held(b)
         n_beat = sum(1 for r in b if r["held_nrmse"] < a_held) if np.isfinite(a_held) else 0
+        need = 3 if len(b) >= 5 else 2
         if name == "H":
-            # B mean >=10% lower than A, and >=2/3 repeats beat A.
+            # B mean >=10% lower than A, and a majority of repeats beat A.
             # No claim vs gravity-only on real arcs (Day-3 decision).
             improvement = (a_held - b_mean) / a_held if a_held > 0 else 0.0
-            passed = bool(np.isfinite(a_held) and improvement >= 0.10 and n_beat >= 2)
+            passed = bool(np.isfinite(a_held) and improvement >= 0.10 and n_beat >= need)
             gates[name] = {"a_held": a_held, "b_mean": b_mean,
                            "improvement": improvement, "n_beat": f"{n_beat}/{len(b)}",
                            "gate": "GREEN" if passed else "RED"}
         elif name == "N":
-            # B within 5% of A and no added terms in >=2/3 repeats.
+            # B within 5% of A and no added terms in a majority of repeats.
             rel = abs(b_mean - a_held) / a_held if a_held > 0 else float("inf")
             n_clean = sum(1 for r in b
                           if list(r["terms"]) == list(P.BASELINE_TERMS)) if b else 0
-            passed = bool(np.isfinite(a_held) and rel <= 0.05 and n_clean >= 2)
+            passed = bool(np.isfinite(a_held) and rel <= 0.05 and n_clean >= need)
             gates[name] = {"a_held": a_held, "b_mean": b_mean,
                            "rel_gap": rel, "n_clean": f"{n_clean}/{len(b)}",
                            "gate": "GREEN" if passed else "RED"}
         else:
             n_correct = sum(1 for r in b
                             if r["submitted"] and "abs(v)*v" in list(r["terms"]))
-            passed = bool(n_correct >= 2)
+            passed = bool(n_correct >= need)
             gates[name] = {"a_held": a_held, "b_mean": b_mean,
                            "n_correct": f"{n_correct}/{len(b)}",
                            "gate": "GREEN" if passed else "RED"}
@@ -196,6 +215,14 @@ def evaluate(rows: list[dict]) -> dict:
 def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(description="Run the Day-5 ablation.")
     parser.add_argument("--repeats", type=int, default=3)
+    parser.add_argument("--repeats-h", type=int, default=None,
+                        help="override repeats for H (default: --repeats)")
+    parser.add_argument("--repeats-n", type=int, default=None,
+                        help="override repeats for N (default: --repeats)")
+    parser.add_argument("--repeats-s", type=int, default=None,
+                        help="override repeats for S (default: --repeats)")
+    parser.add_argument("--guard", default="v1", choices=("v1", "v2"),
+                        help="submit-guard version (v2 = audit B6 AND-rule)")
     parser.add_argument("--effort", default=EFFORT)
     parser.add_argument("--conditions", default="H,N,S")
     parser.add_argument("--out-csv", default="results/ablation.csv")
@@ -210,9 +237,13 @@ def main(argv: list[str] | None = None) -> int:
 
     all_rows: list[dict] = []
     crashed: str = ""
+    rep = {"H": args.repeats_h or args.repeats,
+           "N": args.repeats_n or args.repeats,
+           "S": args.repeats_s or args.repeats}
     try:
         for n in names:
-            all_rows.extend(run_condition(n, args.repeats, args.effort, args.prefix))
+            all_rows.extend(run_condition(n, rep[n], args.effort, args.prefix,
+                                          guard=args.guard))
     except Exception as exc:  # noqa: BLE001 - always persist partial rows
         crashed = f"{type(exc).__name__}: {exc}"[:300]
         print(f"ablation crashed with {len(all_rows)} rows: {crashed}", flush=True)
@@ -242,7 +273,12 @@ def main(argv: list[str] | None = None) -> int:
         "date": date.today().isoformat(),
         "effort": args.effort,
         "repeats": args.repeats,
+        "repeats_by_condition": rep,
+        "guard": args.guard,
         "horizon": "min(2 s, clean tail)",
+        "loop_fit_budget_s": S.LOOP_FIT_BUDGET_S,
+        "screen_budget_s": S.SCREEN_BUDGET_S,
+        "max_fit_calls": S.MAX_FIT_CALLS,
         "total_cost_usd": round(sum(r["cost_usd"] for r in all_rows
                                     if np.isfinite(r["cost_usd"])), 6),
         "crashed": crashed,

@@ -44,6 +44,11 @@ MAX_NFEV_PER_VAR = 30
 SHOOT_FTOL = 1e-6
 SHOOT_XTOL = 1e-6
 SHOOT_GTOL = 1e-6
+# Screen-stage tolerances (audit A4): one weak-init start, loose stop --
+# advisory only, never reported. Tight stage keeps the values above.
+SHOOT_FAST_FTOL = 1e-4
+SHOOT_FAST_XTOL = 1e-4
+SHOOT_FAST_GTOL = 1e-4
 DEFAULT_FIT_BUDGET_S = 60.0
 BLOWUP_RESIDUAL = 1e6
 # One ODE integration must never take this long on our windows (normal
@@ -275,13 +280,15 @@ def _ic_bounds(t: np.ndarray, q: np.ndarray) -> tuple[np.ndarray, np.ndarray, fl
 
 
 def fit_terms(terms: list[str], t: np.ndarray, q: np.ndarray,
-              budget_s: float | None = None) -> FitResult:
+              budget_s: float | None = None, fast: bool = False) -> FitResult:
     """Weak-form start + shooting refinement over coefficients and ``(q0, v0)``.
 
     Three deterministic starts (weak init, zeros, shrunk weak init); the
     lowest-cost converged run wins. Refuses underdetermined fits outright
     instead of returning silent garbage. ``budget_s`` caps wall-clock time;
     expiry raises ``RuntimeError`` so slowness surfaces instead of hanging.
+    ``fast`` runs a single weak-init start with loose tolerances: a cheap
+    screen for the scientist loop, advisory only -- never a reported score.
     """
     clean = validate_terms(list(terms))
     t_arr = np.asarray(t, dtype=float)
@@ -300,11 +307,16 @@ def fit_terms(terms: list[str], t: np.ndarray, q: np.ndarray,
     coef_lower, coef_upper = coeff_bounds(clean, t_arr, q_arr)
     lower = np.concatenate([coef_lower, ic_lower])
     upper = np.concatenate([coef_upper, ic_upper])
-    starts = [
-        np.concatenate([weak, [q0_guess, v0_guess]]),
-        np.concatenate([np.zeros(n_terms), [q0_guess, v0_guess]]),
-        np.concatenate([0.5 * weak, [q0_guess, v0_guess]]),
-    ]
+    if fast:
+        starts = [np.concatenate([weak, [q0_guess, v0_guess]])]
+        ftol, xtol, gtol = SHOOT_FAST_FTOL, SHOOT_FAST_XTOL, SHOOT_FAST_GTOL
+    else:
+        starts = [
+            np.concatenate([weak, [q0_guess, v0_guess]]),
+            np.concatenate([np.zeros(n_terms), [q0_guess, v0_guess]]),
+            np.concatenate([0.5 * weak, [q0_guess, v0_guess]]),
+        ]
+        ftol, xtol, gtol = SHOOT_FTOL, SHOOT_XTOL, SHOOT_GTOL
     deadline = None if budget_s is None else time.monotonic() + budget_s
 
     def residual(params: np.ndarray) -> np.ndarray:
@@ -323,8 +335,8 @@ def fit_terms(terms: list[str], t: np.ndarray, q: np.ndarray,
     try:
         for index, start in enumerate(starts):
             result = least_squares(residual, start, bounds=(lower, upper),
-                                   max_nfev=max_nfev, ftol=SHOOT_FTOL,
-                                   xtol=SHOOT_XTOL, gtol=SHOOT_GTOL)
+                                   max_nfev=max_nfev, ftol=ftol,
+                                   xtol=xtol, gtol=gtol)
             if (result.success and np.all(np.isfinite(result.x))
                     and np.isfinite(result.cost) and result.cost < best_cost):
                 best_cost = result.cost
@@ -342,7 +354,8 @@ def fit_terms(terms: list[str], t: np.ndarray, q: np.ndarray,
 def score_candidate(terms: list[str], t_fit: np.ndarray, q_fit: np.ndarray,
                     t_held: np.ndarray, q_held: np.ndarray,
                     horizon_s: float = 2.0,
-                    budget_s: float = DEFAULT_FIT_BUDGET_S) -> ScoredFit:
+                    budget_s: float = DEFAULT_FIT_BUDGET_S,
+                    fast: bool = False) -> ScoredFit:
     """Fit on the fit window, score the continuation on held-out data.
 
     The scored horizon is min(``horizon_s``, held data). BIC counts
@@ -350,6 +363,8 @@ def score_candidate(terms: list[str], t_fit: np.ndarray, q_fit: np.ndarray,
     model/data problems: failure (bad fit, exploding rollout, exhausted
     budget) returns ``ok=False`` with ``held_nrmse``/``bic`` set to inf and
     ``error`` naming the cause, so the scientist loop treats it as data.
+    ``fast`` selects the single-start loose-tolerance screen: advisory
+    only, never a reported score.
     """
     t_fit_arr = np.asarray(t_fit, dtype=float)
     q_fit_arr = np.asarray(q_fit, dtype=float)
@@ -368,7 +383,8 @@ def score_candidate(terms: list[str], t_fit: np.ndarray, q_fit: np.ndarray,
         clean = validate_terms(list(terms))
         if len(t_held_arr) < 1:
             return failed(clean, "no held-out points to score")
-        fit = fit_terms(clean, t_fit_arr, q_fit_arr, budget_s=budget_s)
+        fit = fit_terms(clean, t_fit_arr, q_fit_arr, budget_s=budget_s,
+                          fast=fast)
         horizon_end = float(t_held_arr[0]) + horizon_s
         scored = min(max(int(np.searchsorted(t_held_arr, horizon_end)), 1),
                      len(t_held_arr))
