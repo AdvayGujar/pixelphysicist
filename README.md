@@ -140,16 +140,19 @@ curve peels away from the held-out points, the graph says so; that is the
 validation, not a decoration. (The residual plots Spark reads during a run
 already exist; the combined equation graph is part of the Day-6 report.)
 
-## Still planned (post-freeze; gated on G5 — currently RED, so cut)
+## MVP-2: one-go projectile (extension window OPENED 2026-10-29)
 
-A one-go projectile flow — finished throw clip in, fitted equations,
-equation graph, report, and a 3-D replay ball re-flying the *fitted*
-equations out — plus the replay renderer itself. Two honest limits are part
-of the design: SAM 3.1 is a batch API, so this is a one-go post-capture flow
-(tens of seconds), **not** realtime; and a single phone camera only
-determines motion in the throw plane, which is embedded in the 3-D scene —
-no depth is claimed. The replay is labelled "fitted model", never exact
-motion.
+Owner decision: ahead of schedule with a Nov 4 deadline, the G5-freeze
+condition is waived; sequencing discipline applies instead (G6 core
+first, phases A→B→C each droppable, hard stop Nov 1 EOD, Nov 2 demo-only).
+Status: Phase A one-go `pixelphys run` works on the bundled synthetic clip
+(`runs/cli_synth_check`: `model.json`, equation graph, `report.html`,
+`overlay.mp4`); Phase B gate tests green with the real-clip application
+reporting gravity-only (drag loses 0.77 vs 0.066 on 20-pt hero arcs —
+consistent with the 1-DOF verdict); Phase C replay renderer built
+(`render_replay_2d`, offline MP4) with asset `runs/mvp2_replay.mp4`
+re-flying the synthetic drag fit. All replays are labelled "fitted model",
+throw-plane only; no realtime or depth claim anywhere.
 
 ## Quickstart
 

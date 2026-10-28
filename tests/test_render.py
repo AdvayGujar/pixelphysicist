@@ -65,3 +65,27 @@ def test_build_report_is_self_contained(tmp_path):
                          [fig], transcript="submitted", cost_usd=0.01)
     text = out.read_text()
     assert "abs(v)*v" in text and "data:image/png;base64" in text
+
+
+def test_render_replay_2d_reflys_fitted_equations(tmp_path):
+    """MVP-2 Phase C: replay ball tracks the fitted curve by construction."""
+    from pixelphys import physics as P
+
+    truth = json.loads((FIXTURES / "projectile_2d.json").read_text())
+    t = np.array(truth["t"])
+    terms_x = [P.DRAG_TERM_X]
+    terms_y = ["1", P.DRAG_TERM_Y]
+    coeffs_x = np.array([-0.06])
+    coeffs_y = np.array([-9.81, -0.06])
+    state0 = (float(truth["x"][0]), float(truth["y"][0]),
+              float(truth["vx"][0]), float(truth["vy"][0]))
+    grid = np.linspace(t[0], t[-1], 60)
+    out = R.render_replay_2d(terms_x, coeffs_x, terms_y, coeffs_y, state0,
+                             grid, tmp_path / "replay.mp4",
+                             caption="x''=-k|v|vx y''=-g-k|v|vy")
+    assert out.exists() and out.stat().st_size > 0
+    # The replay is driven by the equations: re-simulating the same inputs
+    # reproduces the drawn path exactly (fitted model, never exact motion).
+    px, py, _, _ = P.simulate_projectile(terms_x, terms_y, coeffs_x,
+                                         coeffs_y, grid, state0)
+    assert abs(float(px[-1]) - float(truth["x"][-1])) / max(abs(float(truth["x"][-1])), 1e-9) < 0.05

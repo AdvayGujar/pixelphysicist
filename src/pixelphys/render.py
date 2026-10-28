@@ -131,6 +131,55 @@ def _embed_image(path: Path) -> str:
     return f'<img src="data:image/png;base64,{data}" style="max-width:100%"/>'
 
 
+def render_replay_2d(terms_x: Sequence[str], coeffs_x: Sequence[float],
+                     terms_y: Sequence[str], coeffs_y: Sequence[float],
+                     state0: tuple[float, float, float, float],
+                     t_grid: np.ndarray, out_path: Path, fps: float = 30.0,
+                     caption: str = "") -> Path:
+    """MVP-2 Phase C: re-fly fitted projectile equations as an MP4 replay.
+
+    The ball is driven by integrating the *exported equations* (never the
+    tracked points), drawn on the synthetic renderer geometry (throw plane
+    only -- a monocular clip determines no out-of-plane motion). The full
+    fitted path is drawn faintly behind the ball; the caption names the
+    fitted model. Offline OpenCV render, no network.
+    """
+    import cv2
+
+    from . import physics as P
+    from . import synthetic as syn
+
+    cx = np.asarray(coeffs_x, dtype=float)
+    cy = np.asarray(coeffs_y, dtype=float)
+    t = np.asarray(t_grid, dtype=float)
+    px, py, _, _ = P.simulate_projectile(list(terms_x), list(terms_y),
+                                         cx, cy, t, tuple(state0))
+    pts = [syn.projectile_center_px(float(x), float(y)) for x, y in zip(px, py)]
+    out = Path(out_path)
+    out.parent.mkdir(parents=True, exist_ok=True)
+    writer = cv2.VideoWriter(str(out), cv2.VideoWriter_fourcc(*"mp4v"),
+                             fps, (syn.FRAME_W, syn.FRAME_H))
+    try:
+        n = len(pts)
+        for i, (bx, by) in enumerate(pts):
+            frame = np.full((syn.FRAME_H, syn.FRAME_W, 3), syn.BACKGROUND,
+                            dtype=np.uint8)
+            cv2.line(frame, (0, syn.GROUND_Y_PX),
+                     (syn.FRAME_W, syn.GROUND_Y_PX), (200, 200, 200), 1)
+            for j in range(1, n):
+                cv2.line(frame, pts[j - 1], pts[j], (180, 180, 180), 1)
+            cv2.circle(frame, (bx, by), syn.DOT_RADIUS_PX, syn.DOT_COLOR, -1)
+            if caption:
+                cv2.putText(frame, caption[:90], (10, 24),
+                            cv2.FONT_HERSHEY_SIMPLEX, 0.5, (60, 60, 60), 1)
+            cv2.putText(frame, "fitted model (throw plane only)", (10, 464),
+                        cv2.FONT_HERSHEY_SIMPLEX, 0.5, (120, 120, 120), 1)
+            writer.write(frame)
+    finally:
+        writer.release()
+    return out
+
+
 def build_report(out_path: Path, title: str, equation: str, units: str,
                  rows: Sequence[dict[str, Any]],
                  figure_paths: Sequence[Path],
