@@ -140,3 +140,44 @@ def test_projectile_noisy_recovery_within_tolerance() -> None:
     assert abs(-scored.coeffs_y[0] - 9.81) / 9.81 < 0.05
     assert abs(-scored.coeffs_x[0] - 0.06) / 0.06 < 0.25
     assert abs(-scored.coeffs_y[1] - 0.06) / 0.06 < 0.25
+
+
+@pytest.mark.slow
+def test_tracked_clip_roundtrip_recovers_equation_and_trajectory() -> None:
+    """End-to-end 2-DOF: known equation -> rendered clip -> tracked obs -> fit.
+
+    The fit must recover the original equation (g within 5%, k within 25%
+    of the pixel-scaled truth) and the tracked trajectory must match the
+    rendered truth. Mirrors the 1-DOF tracked-synthetic coverage.
+    """
+    from pathlib import Path
+
+    from pixelphys import trajectory as T
+
+    fixture = Path(__file__).resolve().parent / "fixtures"
+    truth = __import__("json").loads((fixture / "projectile_2d.json").read_text())
+    obs = T.load_observations(fixture / "obs_projectile_2d.json")
+    assert len(obs) == len(truth["t"])
+    gaps = np.diff([o.t for o in obs])
+    fps = 1.0 / float(np.median(gaps))
+    obs = T.clean_observations(obs)
+    obs = max(T.split_by_gaps(obs), key=len)
+    t, cx, cy = T.resample_uniform(obs, fps)
+    x = T.smooth_position(cx)
+    y = T.smooth_position(cy)
+    # Tracked trajectory matches the rendered truth trajectory.
+    expected = np.array([syn.projectile_center_px(xx, yy)
+                         for xx, yy in zip(truth["x"], truth["y"])], dtype=float)
+    assert np.allclose(x, expected[:, 0], atol=3.0)
+    assert np.allclose(y, expected[:, 1], atol=3.0)
+    assert len(t) == len(truth["t"])
+    cut = int(len(t) * 0.6)
+    scored = P.score_projectile([P.DRAG_TERM_X], ["1", P.DRAG_TERM_Y],
+                                t[:cut], x[:cut], y[:cut],
+                                t[cut:], x[cut:], y[cut:])
+    assert scored.ok
+    # Pixel-scaled truth: g_px = 9.81 * 30 px/m, k_px = 0.06 / 30 /px.
+    assert abs(scored.coeffs_y[0] - 294.3) / 294.3 < 0.05
+    assert abs(-scored.coeffs_x[0] - 0.002) / 0.002 < 0.25
+    assert abs(-scored.coeffs_y[1] - 0.002) / 0.002 < 0.25
+    assert scored.held_nrmse < 0.01
