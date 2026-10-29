@@ -17,10 +17,11 @@ from typing import Any, Sequence
 import numpy as np
 
 
-def render_equation(terms: Sequence[str], coeffs: Sequence[float]) -> str:
-    """One-line equation ``q'' = c0*t0 + ...`` with 4-significant digits."""
+def render_equation(terms: Sequence[str], coeffs: Sequence[float],
+                    lhs: str = "q''") -> str:
+    """One-line equation ``LHS = c0*t0 + ...`` with 4-significant digits."""
     parts = [f"{c:.4g}*{t}" for c, t in zip(coeffs, terms)]
-    return "q'' = " + " + ".join(parts)
+    return f"{lhs} = " + " + ".join(parts)
 
 
 def plot_equation(t_fit: np.ndarray, q_fit: np.ndarray,
@@ -30,8 +31,26 @@ def plot_equation(t_fit: np.ndarray, q_fit: np.ndarray,
                   final_terms: Sequence[str], final_coeffs: Sequence[float],
                   final_q0: float, final_v0: float, final_held: float,
                   out_path: Path, units: str = "px",
-                  title: str = "held-out validation") -> Path:
-    """Draw the Section 4.6 equation graph; return the written PNG path."""
+                  title: str = "held-out validation",
+                  lhs: str = "q''",
+                  control_terms: Sequence[str] | None = None,
+                  control_coeffs: Sequence[float] | None = None,
+                  control_q0: float | None = None, control_v0: float | None = None,
+                  control_held: float | None = None,
+                  control_label: str = "control",
+                  pred_base: np.ndarray | None = None,
+                  pred_final: np.ndarray | None = None,
+                  pred_control: np.ndarray | None = None) -> Path:
+    """Draw the Section 4.6 equation graph; return the written PNG path.
+
+    An optional control model (e.g. gravity-only) is drawn as a third
+    curve so the demo narrative can never present the final model as the
+    win while a simpler control wins off-screen (audit Finding 2).
+
+    ``pred_*`` are precomputed full-grid curves (used by the 2-DOF CLI,
+    whose models the 1-DOF simulator below cannot integrate); when given,
+    the matching q0/v0/terms are labels only and no simulation runs.
+    """
     from . import physics as P
 
     import matplotlib
@@ -44,10 +63,18 @@ def plot_equation(t_fit: np.ndarray, q_fit: np.ndarray,
     t_held_a = np.asarray(t_held, dtype=float)
     q_held_a = np.asarray(q_held, dtype=float)
     grid = np.concatenate([t_fit_a, t_held_a])
-    base_q, _ = P.simulate(list(baseline_terms), np.asarray(baseline_coeffs),
-                           grid, (float(baseline_q0), float(baseline_v0)))
-    fin_q, _ = P.simulate(list(final_terms), np.asarray(final_coeffs),
-                          grid, (float(final_q0), float(final_v0)))
+    if pred_base is None:
+        base_q, _ = P.simulate(list(baseline_terms), np.asarray(baseline_coeffs),
+                               grid, (float(baseline_q0), float(baseline_v0)))
+    else:
+        base_q = np.asarray(pred_base, dtype=float)
+        assert base_q.shape == grid.shape, "pred_base must span the full grid"
+    if pred_final is None:
+        fin_q, _ = P.simulate(list(final_terms), np.asarray(final_coeffs),
+                              grid, (float(final_q0), float(final_v0)))
+    else:
+        fin_q = np.asarray(pred_final, dtype=float)
+        assert fin_q.shape == grid.shape, "pred_final must span the full grid"
     n_fit = len(t_fit_a)
 
     fig, ax = plt.subplots(figsize=(8.0, 4.5))
@@ -56,6 +83,18 @@ def plot_equation(t_fit: np.ndarray, q_fit: np.ndarray,
                label="measured (held out)")
     ax.plot(grid, base_q, lw=1.2, ls="-",
             label=f"baseline [{', '.join(baseline_terms)}] held NRMSE {baseline_held:.3f}")
+    if control_terms is not None:
+        assert (control_coeffs is not None and control_q0 is not None
+                and control_v0 is not None and control_held is not None)
+        if pred_control is None:
+            ctrl_q, _ = P.simulate(list(control_terms), np.asarray(control_coeffs),
+                                   grid, (float(control_q0), float(control_v0)))
+        else:
+            ctrl_q = np.asarray(pred_control, dtype=float)
+            assert ctrl_q.shape == grid.shape, "pred_control must span the full grid"
+        ax.plot(grid, ctrl_q, lw=1.2, ls=":",
+                label=f"{control_label} [{', '.join(control_terms)}] "
+                      f"held NRMSE {control_held:.3f}")
     ax.plot(grid[:n_fit], fin_q[:n_fit], lw=1.6,
             label=f"final [{', '.join(final_terms)}] fit")
     ax.plot(grid[n_fit - 1:], fin_q[n_fit - 1:], lw=1.6, ls="--",
@@ -64,7 +103,7 @@ def plot_equation(t_fit: np.ndarray, q_fit: np.ndarray,
     ax.set_ylabel(f"q ({units})")
     ax.set_title(title)
     ax.legend(fontsize=8, loc="best")
-    equation = render_equation(final_terms, final_coeffs)
+    equation = render_equation(final_terms, final_coeffs, lhs=lhs)
     ax.text(0.02, 0.98, f"{equation}\nunits: {units}",
             transform=ax.transAxes, va="top", ha="left", fontsize=9,
             family="monospace",
@@ -79,12 +118,15 @@ def plot_equation(t_fit: np.ndarray, q_fit: np.ndarray,
 
 def render_overlay(video_path: Path, t_pred: np.ndarray,
                    xy_pred: np.ndarray, out_path: Path,
-                   fps: float | None = None, radius: int = 10) -> Path:
+                   fps: float | None = None, radius: int = 10,
+                   t_span: tuple[float, float] | None = None) -> Path:
     """Draw predicted (x, y) pixel positions as a ghost over the footage.
 
     ``t_pred``/``xy_pred`` come from the caller (the CLI maps the fitted
     1-DOF/2-DOF trajectory back to pixels); frames sample the prediction
-    at each frame time by linear interpolation.
+    at each frame time by linear interpolation. With ``t_span`` the ghost
+    is blanked outside the fitted window instead of freezing clamped at
+    the edges (audit Finding 13).
     """
     import cv2
 
@@ -111,10 +153,13 @@ def render_overlay(video_path: Path, t_pred: np.ndarray,
                 if not ok:
                     break
                 t = idx / fps
-                x = float(np.interp(t, t_pred_a, xy_pred_a[:, 0]))
-                y = float(np.interp(t, t_pred_a, xy_pred_a[:, 1]))
-                cv2.circle(frame, (int(round(x)), int(round(y))), radius,
-                           (0, 0, 255), 2)
+                in_span = (t_span is None
+                           or (t_span[0] <= t <= t_span[1]))
+                if in_span:
+                    x = float(np.interp(t, t_pred_a, xy_pred_a[:, 0]))
+                    y = float(np.interp(t, t_pred_a, xy_pred_a[:, 1]))
+                    cv2.circle(frame, (int(round(x)), int(round(y))), radius,
+                               (0, 0, 255), 2)
                 writer.write(frame)
                 idx += 1
         finally:

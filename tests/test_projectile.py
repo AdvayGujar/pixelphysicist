@@ -181,3 +181,22 @@ def test_tracked_clip_roundtrip_recovers_equation_and_trajectory() -> None:
     assert abs(-scored.coeffs_x[0] - 0.002) / 0.002 < 0.25
     assert abs(-scored.coeffs_y[1] - 0.002) / 0.002 < 0.25
     assert scored.held_nrmse < 0.01
+
+
+@pytest.mark.slow
+def test_projectile_tools_accept_precomputed_baseline(tmp_path) -> None:
+    """Audit A2 extended: 2-DOF tools take a precomputed baseline as-is."""
+    from pixelphys import scientist as S
+
+    t, x, y = projectile_data()
+    cut = int(len(t) * 0.6)
+    base = P.score_projectile(P.PROJECTILE_BASELINE_X,
+                              P.PROJECTILE_BASELINE_Y,
+                              t[:cut], x[:cut], y[:cut],
+                              t[cut:], x[cut:], y[cut:])
+    assert base.ok
+    tools = S.ProjectileTools(t[:cut], x[:cut], y[:cut],
+                              t[cut:], x[cut:], y[cut:], tmp_path,
+                              baseline=base)
+    assert tools.baseline is base
+    assert tools.baseline_id == "model-0"

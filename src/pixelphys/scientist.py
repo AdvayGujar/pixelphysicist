@@ -570,6 +570,7 @@ class ProjectileTools:
                  x_held: np.ndarray, y_held: np.ndarray,
                  out_dir: Path, budget_s: float = LOOP_FIT_BUDGET_S,
                  fit_cache: dict[str, Any] | None = None,
+                 baseline: P.ScoredFit2D | None = None,
                  ) -> None:
         self.t_fit = np.asarray(t_fit, dtype=float)
         self.x_fit = np.asarray(x_fit, dtype=float)
@@ -586,12 +587,18 @@ class ProjectileTools:
         # Audit A1/A3: same memo and loop-budget treatment as ScientistTools.
         # Two-stage scoring (A4) and guard v2 (B6) are 1-DOF only for now.
         self._fit_cache: dict[str, Any] = fit_cache if fit_cache is not None else {}
-        baseline = P.score_projectile(P.PROJECTILE_BASELINE_X,
-                                      P.PROJECTILE_BASELINE_Y,
-                                      self.t_fit, self.x_fit, self.y_fit,
-                                      self.t_held, self.x_held, self.y_held,
-                                      budget_s=budget_s)
-        self.baseline_id = self._register(baseline, "baseline library")
+        # Audit A2 (extended to 2-DOF): the 8-term projectile baseline needs
+        # the full 60 s to converge on 47-pt windows; the caller precomputes
+        # it instead of refitting per loop at the loop budget.
+        if baseline is None:
+            baseline = P.score_projectile(P.PROJECTILE_BASELINE_X,
+                                          P.PROJECTILE_BASELINE_Y,
+                                          self.t_fit, self.x_fit, self.y_fit,
+                                          self.t_held, self.x_held, self.y_held,
+                                          budget_s=budget_s)
+            self.baseline_id = self._register(baseline, "baseline library")
+        else:
+            self.baseline_id = self._register(baseline, "precomputed baseline")
 
     def _register(self, scored: P.ScoredFit2D, rationale: str) -> str:
         model_id = f"model-{self._next_id}"
