@@ -72,7 +72,9 @@ Mean B vs A; "beat" = lower held-out NRMSE.
 | S synthetic tracked (30 pts) | 0.062 | 0.005 (0.004 / 0.008 / 0.004) | 3/3 | true `abs(v)*v` 1/3; `q*v` distractor 2/3 | ~$0.074 |
 
 Total: ablation $0.22 for 9 Spark runs (Day-5 tuning pilots ≈ $0.18
-separately; cost-log total ≈ $0.99 of $150 including day-4 gates). Gate:
+separately; cost-log total ≈ $0.99 Spark + ~$0.19 SAM video (957 billed
+frames @ $0.20/1k, estimated from local frame counts), day-4 gates
+included, of $150). Gate:
 H GREEN (3/3 beat, −46% mean), N RED (Spark adds terms in 3/3; 10.6%
 mean gap, outside the 5% band), S RED on exact recovery (1/3), GREEN on
 beating the baseline (3/3, −91% mean).
@@ -108,10 +110,11 @@ What v2 teaches (all numbers from committed transcripts):
   pre-registered rule does not count — same non-submission habit as v1.
 - Transfer (`results/transfer.json`, `scripts/transfer_check.py`,
   `rollout_score` on held-out clips): true drag transfers (0.008 → 0.003
-  on a second toss), the `q*v` distractor does not (0.004 → 0.349), the N
-  spurious term does not (0.037 → 0.075), and the v2 `q**2` find does not
-  beat the baseline in transfer (0.090 vs 0.088). BIC + transfer agree;
-  held-NRMSE alone does not.
+  vs baseline 0.443 on a second toss), the `q*v` distractor does not
+  (0.004 → 0.349 vs 0.443), the N spurious term is inconclusive on take 2
+  (0.075 vs the baseline's 0.088 — both degrade ~2× on the harder take),
+  and the v2 `q**2` find does not beat the baseline in transfer
+  (0.090 vs 0.088). BIC + transfer agree on S; held-NRMSE alone does not.
 
 **Limits.**
 - The numeric fitting is classical; Spark proposes model *structure* only.
@@ -128,19 +131,27 @@ What v2 teaches (all numbers from committed transcripts):
 - Scope: one object, one static camera, short clips. Numbers behind every
   claim above are in `results/` with the scripts that produced them.
 
-## Seeing the equation (report visual, lands with the renderer)
+## Seeing the equation (report visual)
 
 The main output of a run is a single graph, not a table of numbers.
-On the same axes it will show the measured trajectory as points, the baseline
-model's curve, and the final model's curve continued (dashed) into motion
-the fit never saw — with the discovered equation, its fitted coefficients,
-and both models' held-out NRMSE written on the graph itself. If the final
-curve peels away from the held-out points, the graph says so; that is the
-validation, not a decoration.
+On the same axes it shows the measured trajectory as points, the baseline
+model's curve, the gravity-only control curve, and the final model's curve
+continued (dashed) into motion the fit never saw — with the discovered
+equation, its fitted coefficients, and every model's held-out NRMSE
+written on the graph itself. If the final curve peels away from the
+held-out points, the graph says so; that is the validation, not a
+decoration.
+
+![Equation graph: hero toss, baseline vs gravity-only vs discovered drag](docs/figures/equation_hero.png)
+
+*Hero toss take5: baseline held-NRMSE 0.73, gravity-only 0.065, discovered
+drag 0.19. The third curve is the point — plain gravity still wins on
+this short arc, so no drag-on-real-arcs claim is made.*
 
 ## One-go projectile replay
 
-A finished throw clip goes in; out come the fitted projectile equations,
+A finished throw clip goes in (`pixelphys run throw.mp4 --prompt "ball"
+--mode projectile`); out come the fitted projectile equations,
 the equation graph, a report, and a replay video in which a rendered ball
 re-flies the *fitted* equations — never the tracked points. It is the same
 pipeline in two coupled coordinates with the same held-out validation,
