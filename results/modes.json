@@ -1,0 +1,86 @@
+{
+ "spring_synthetic": {
+  "tracker": "color",
+  "submitted": true,
+  "final_terms": [
+   "1",
+   "q",
+   "v",
+   "q**3"
+  ],
+  "final_coeffs": [
+   -77.60139481708353,
+   -21.98071043346569,
+   -0.24838205676264438,
+   -9.714666155722706e-05
+  ],
+  "held_nrmse": 0.0008251973803470605,
+  "baseline_held_nrmse": 0.013892507481762913,
+  "gravity_or_constant_held_nrmse": 0.7211679308537908,
+  "rounds": 3,
+  "cost_usd": 0.02326825
+ },
+ "rolling_synthetic": {
+  "tracker": "color",
+  "submitted": false,
+  "final_terms": [
+   "1",
+   "sign(v)",
+   "sin(q)*v"
+  ],
+  "final_coeffs": [
+   -392.79390705561735,
+   -138.95365503317103,
+   0.34945118193877045
+  ],
+  "held_nrmse": 0.04485093068138205,
+  "baseline_held_nrmse": null,
+  "gravity_or_constant_held_nrmse": 0.4544551518128066,
+  "rounds": 6,
+  "cost_usd": 0.046275000000000004
+ },
+ "rolling_morpheus_orange": {
+  "tracker": "motion",
+  "submitted": false,
+  "final_terms": [
+   "1",
+   "sign(v)"
+  ],
+  "final_coeffs": [
+   -86.64298587638682,
+   141.99792441626278
+  ],
+  "held_nrmse": 0.006880212647412867,
+  "baseline_held_nrmse": 0.07651727218521275,
+  "gravity_or_constant_held_nrmse": 0.006880232169345483,
+  "rounds": 3,
+  "cost_usd": 0.02248325
+ },
+ "projectile_morpheus": {
+  "tracker": "motion",
+  "submitted": true,
+  "final_terms": {
+   "x": [
+    "sqrt(vx**2+vy**2)*vx"
+   ],
+   "y": [
+    "1",
+    "sqrt(vx**2+vy**2)*vy"
+   ]
+  },
+  "final_coeffs": {
+   "x": [
+    -8.481377519868072e-05
+   ],
+   "y": [
+    -426.04935774936024,
+    -9.568346815656237e-05
+   ]
+  },
+  "held_nrmse": 0.029956186845723185,
+  "baseline_held_nrmse": 0.21555691179297973,
+  "gravity_or_constant_held_nrmse": 0.019808461983224977,
+  "rounds": 4,
+  "cost_usd": 0.02134575
+ }
+}

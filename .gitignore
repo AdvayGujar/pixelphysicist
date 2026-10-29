@@ -21,6 +21,7 @@ results/*.json
 !results/ablation_v2.json
 !results/ablation_v2.csv
 !results/transfer.json
+!results/modes.json
 data/clips/*
 data/synthetic/*
 !data/clips/.gitkeep

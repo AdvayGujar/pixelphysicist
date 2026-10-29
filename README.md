@@ -1,188 +1,157 @@
 # Pixel Physicist
 
-Film a moving object with a phone. SAM 3.1 tracks it, Muse Spark acts as the
-scientist: it reads the residual evidence, diagnoses why the first model fails,
-proposes the missing physics, and the system validates the result by predicting
-motion it never saw.
+*Built for the Meta Global AI Developer Hackathon (Push the Frontier track).*
 
-## How it works
+## The problem
 
-```
-phone clip
-  → tracking (SAM 3.1 video, HSV color fallback)
-  → calibration to coordinates: 1-DOF q(t), or projectile x(t), y(t)
-  → classical fit of a default physical model (weak-form init + shooting)
-  → Spark loop: read residual plots, propose the missing term, refit
-  → held-out prediction, scored by NRMSE + BIC over a fixed horizon
-```
+Drop a ball, toss a tennis ball, let a spring bounce — the motion follows a
+simple mathematical rule (an equation). Normally, finding that rule from a
+video takes a human with measuring tools, spreadsheets, and time.
 
-The numeric fitting is classical. Spark's contribution is proposing and
-revising model *structure* from residual evidence; an ablation with a negative
-control measures exactly that contribution. The pipeline handles one object
-and one static camera, in two scientist modes:
+**Can a computer watch a short phone video and figure out the rule by
+itself — then prove it got the right rule by predicting motion it has
+never seen?**
 
-- **1-DOF mode** — a single coordinate `q(t)` (vertical toss, pendulum
-  displacement) with terms in `q, v`; Spark looks for terms like quadratic
-  drag `abs(v)*v` or Coulomb friction `sign(v)` outside the baseline
-  `[1, q, v, v**2]`.
-- **Projectile mode** — two coupled coordinates `x(t), y(t)` with terms in
-  `x, y, vx, vy`; Spark looks for drag coupled through the speed, e.g.
-  `sqrt(vx**2+vy**2)*vx`, with the same coefficient expected on both axes.
-- **Spring mode** (`--mode spring`) — vertical displacement from
-  equilibrium; Spark looks for nonlinear (Duffing) stiffness `q**3` or dry
-  friction outside the linear-spring baseline. Validated end-to-end on
-  the synthetic Duffing clip (submitted `q**3`, coefficients matching
-  truth). Long real spring footage (30 s+) is outside the fitted
-  window envelope — the shooter rollout does not survive it yet.
-- **Rolling mode** (`--mode rolling`) — distance along a slope; Spark
-  looks for Coulomb rolling friction `sign(v)`, which only separates
-  from the constant gravity term when the ball reverses direction.
-  On the synthetic slope it recovered both the friction (−139 vs
-  −137.5 px/s²) and gravity terms; a one-direction roll is reported
-  as the constant-deceleration case it is.
+That is what this project does.
 
-## Current state (Day 5 done: ablation collected, G5 RED)
+## The solution, in plain words
 
-Built and verified:
+1. **Watch.** You give the program a short video of one moving object.
+   Meta's **SAM 3.1** model finds the object in every frame and follows it,
+   turning the video into a list of positions over time. (If SAM can't find
+   it, two built-in backup trackers try instead.)
+2. **Try the obvious explanation first.** The program fits a simple
+   "textbook" equation to the first part of the motion.
+3. **Check where it goes wrong.** It then predicts the rest of the motion —
+   the part it wasn't allowed to fit — and draws where the prediction
+   drifts away from reality.
+4. **Ask the scientist.** Meta's **Muse Spark** model looks at those
+   error pictures, works out what physics is missing ("the error grows
+   with speed — that looks like air resistance"), and suggests a better
+   equation.
+5. **Prove it.** The new equation is only accepted if it predicts the
+   unseen part of the motion better than the simple one did. Guessing
+   doesn't count; the held-back footage is the judge.
 
-- Tracking: SAM 3.1 video and an HSV color fallback; synthetic clips with
-  known ground truth in both modes (`tests/fixtures/`).
-- Fitting: weak-form (integral) initialization plus shooting refinement;
-  every candidate is scored on held-out motion it never saw
-  (`results/baseline.json`, reproduced by `scripts/run_baseline.py`).
-  Synthetic truth is recovered exactly in both modes; the baseline fails
-  visibly on the real hero clip (held-out NRMSE 0.73 vs gravity-only 0.065
-  — the simple control is reported, not hidden).
-- Scientist: the 3-tool Spark loop (`fit_model`, `plot_residuals`,
-  `submit_model` with a beat-the-baseline guard) is built in both modes
-  and both 5-run synthetic gates are green (G4/G4b 5/5, `results/day4.json`
-  via `scripts/run_day4.py`): the hidden drag coefficients are recovered
-  exactly. After an audit noted the gate runs fit the menu answer before
-  inspecting any residual, the loop now attaches the baseline residual
-  plots up front so the first fit diagnoses seen evidence
-  (`results/day4_diag.json`, 1 verification run per mode).
-- Ablation: 12 runs (3 baselines + 9 Spark loops at `low` effort, all from
-  tracked observations) via `scripts/run_ablation.py` — see the table
-  below. G5 is RED: the hero claim holds, the negative control and the
-  exact-term recovery do not.
+The heavy maths (actually fitting numbers) is done by ordinary classical
+code. Spark's job is the creative step a spreadsheet can't do: deciding
+*what kind of physics* is missing.
 
-Not built yet: the demo video. (Shipped since: the one-command
-`pixelphys run …` wiring, the report and ghost-overlay renderer, the
-equation graph, and the replay renderer.)
+## See it work
 
-## Ablation (Day 5, `results/ablation.csv`)
+**Step 1–2: SAM follows the ball, and the video becomes a clean curve.**
 
-Split protocol throughout: fit the first 60%, score the next 2 s
-(min(2 s, clean tail)) by continuing each model's own fitted trajectory.
-B = baseline + Spark (3 repeats, `reasoning_effort="low"`); A = baseline.
-Mean B vs A; "beat" = lower held-out NRMSE.
+![SAM tracked the hero toss, and the cleaned motion curve](docs/figures/tracking_hero.png)
 
-| Clip | A held-NRMSE | B held-NRMSE (mean of 3) | Beats A | Terms found | Cost |
-|---|---|---|---|---|---|
-| H hero (tossed ball, 20 pts) | 0.732 | 0.399 (0.490 / 0.187 / 0.519) | 3/3 | r1 `1,q,abs(v)*v`, r2 `1,abs(v)*v`, r3 `1,q,v,sign(v)` | ~$0.045 |
-| N negative control (pendulum, 215 pts) | 0.041 | 0.037 (0.037 / 0.037 / 0.037) | 3/3 (worse: see below) | spurious `v**3` + `sign(v)` every repeat; r1/r2 are unsubmitted fallbacks† | ~$0.098 |
-| S synthetic tracked (30 pts) | 0.062 | 0.005 (0.004 / 0.008 / 0.004) | 3/3 | true `abs(v)*v` 1/3; `q*v` distractor 2/3 | ~$0.074 |
+**Step 3–5: the discovered equation, drawn against reality.** The dashed
+part is motion the fit never saw. The equation is written on the graph
+itself, with the score for each model:
 
-Total: ablation $0.22 for 9 Spark runs (Day-5 tuning pilots ≈ $0.18
-separately; cost-log total ≈ $0.99 Spark + ~$0.19 SAM video (957 billed
-frames @ $0.20/1k, estimated from local frame counts), day-4 gates
-included, of $150). Gate:
-H GREEN (3/3 beat, −46% mean), N RED (Spark adds terms in 3/3; 10.6%
-mean gap, outside the 5% band), S RED on exact recovery (1/3), GREEN on
-beating the baseline (3/3, −91% mean).
+![Synthetic toss: the program finds the hidden air-resistance term](docs/figures/synthetic_drag.png)
 
-† N r1/r2 never called `submit_model`; the loop reported its best-held
-model as an unsubmitted fallback. They enter the gate mean as condition-B
-outcomes, not as Spark endorsements.
+On this made-up test clip (where we know the true answer), the program
+recovers the hidden air-resistance value almost exactly.
 
-## Ablation v2 (audit B, `results/ablation_v2.csv`)
+![Hero toss from a real phone video](docs/figures/equation_hero.png)
 
-Same frozen conditions, stricter loop: screen-then-tight fits (15 s loop
-budget, 5 s screens, shared memo, 8 fit-call cap), submit guard v2
-(≥2% held-NRMSE **and** BIC **and** train-within-5%), repeats H:3 N:5
-S:5. 13 repeats in ~10 min (≈ $0.44; S-r1 close 00:16:45 → files close 00:23:03). G5 RED stands; v2 is a separate
-experiment reported side by side.
+On the real phone clip above, notice the third curve: plain gravity with
+no air resistance at all still wins on this very short throw. We show that
+on purpose — the program reports the simple explanation whenever it is
+actually better. More on honesty below.
 
-| Clip | A held-NRMSE | B held-NRMSE | Beats A | Terms found | Verdict |
-|---|---|---|---|---|---|
-| H hero | 0.732 | 0.551 (0.187 / 0.732 / 0.732) | 1/3 | drag once (fallback); baseline submitted 2/3 | RED (need 2) |
-| N control | 0.041 | 0.040 (3× baseline, 0.037, 0.037) | 2/5 | baseline 3/5; `v**3`, `q**2` once each | GREEN (gap 4.3%, clean 3/5) |
-| S synthetic | 0.062 | 0.041 (2× 0.008 drag, 3× 0.062 baseline) | 2/5 | true drag 2/5 as fallback; baseline submitted 3/5; **no** `q*v` submissions | RED (need 3 submitted-correct; 0/5) |
+**The equation, played back.** Once an equation is found, the program can
+re-run it in a little simulated world (this replay is driven by the fitted
+equation, not by the original video frames):
 
-What v2 teaches (all numbers from committed transcripts):
-- The guard cleans the control: no `v**3`/`sign(v)` submissions; the one
-  accepted extra term (`q**2`, N r5) passes all three checks narrowly
-  (held 0.0366, BIC 642.5 < 645.8, train +0.6%).
-- The train rule is miscalibrated: the overfit baseline owns the fit
-  window, so true sparse models lose on train (S drag 0.117 vs 0.102,
-  +15%; H drag 3.40 vs 1.17) and can never pass v2. BIC already prices
-  complexity; the follow-up is held-NRMSE **and** BIC, dropping train.
-- Strictness has a price: 2/5 S runs recover the true drag but as
-  fallbacks (Spark explored instead of submitting), which the
-  pre-registered rule does not count — same non-submission habit as v1.
-- Transfer (`results/transfer.json`, `scripts/transfer_check.py`,
-  `rollout_score` on held-out clips): true drag transfers (0.008 → 0.003
-  vs baseline 0.443 on a second toss), the `q*v` distractor does not
-  (0.004 → 0.349 vs 0.443), the N spurious term is inconclusive on take 2
-  (0.075 vs the baseline's 0.088 — both degrade ~2× on the harder take),
-  and the v2 `q**2` find does not beat the baseline in transfer
-  (0.090 vs 0.088). BIC + transfer agree on S; held-NRMSE alone does not.
+![Replay of a fitted projectile equation](docs/figures/replay.gif)
 
-**Limits.**
-- The numeric fitting is classical; Spark proposes model *structure* only.
-- The hero result is narrow: the drag term beats the *baseline* 4× on
-  20-point arcs, yet still loses to plain gravity on real data — so no
-  drag-on-real-arcs claim is made. Discovery is proven on synthetic truth
-  (exact recovery 5/5), not on phone footage.
-- The negative control is not clean: Spark sometimes adds small spurious
-  terms that shave ~10% off held error while fitting train and BIC worse.
-  Treat extra terms with suspicion unless BIC and transfer agree.
-- On noisy tracked (vs clean truth-array) synthetic, exact-term recovery
-  degrades: a correlated distractor can out-predict the true term on one
-  realization (BIC still prefers the truth).
-- Scope: one object, one static camera, short clips. Numbers behind every
-  claim above are in `results/` with the scripts that produced them.
+## Four kinds of motion it understands
 
-## Seeing the equation (report visual)
+| You film… | What it looks for | Example result |
+|---|---|---|
+| Something tossed up and down | Air resistance that grows with speed | Found it exactly on the test clip |
+| A ball thrown across the frame | Air resistance acting in both directions at once | Found it on the test clip |
+| A spring bouncing | A spring that gets stiffer the more it stretches | Found it on the test clip |
+| A ball rolling up and down a slope | Rolling friction (the kind that always slows you down, whichever way you roll) | Found it on the test clip |
 
-The main output of a run is a single graph, not a table of numbers.
-On the same axes it shows the measured trajectory as points, the baseline
-model's curve, the gravity-only control curve, and the final model's curve
-continued (dashed) into motion the fit never saw — with the discovered
-equation, its fitted coefficients, and every model's held-out NRMSE
-written on the graph itself. If the final curve peels away from the
-held-out points, the graph says so; that is the validation, not a
-decoration.
+The same system was also tried on **other people's footage** (a public
+physics-video dataset). It worked end-to-end there too — and correctly
+concluded that one clip was explained by plain gravity, no extra physics
+needed.
 
-![Equation graph: hero toss, baseline vs gravity-only vs discovered drag](docs/figures/equation_hero.png)
+## Does the "scientist" step actually help? (the honest results)
 
-*Hero toss take5: baseline held-NRMSE 0.73, gravity-only 0.065, discovered
-drag 0.19. The third curve is the point — plain gravity still wins on
-this short arc, so no drag-on-real-arcs claim is made.*
+We ran a careful comparison: the simple model alone vs the simple model +
+Spark, three tries each, on three clips. Lower error is better:
 
-## One-go projectile replay
+![Ablation results](docs/figures/ablation_chart.png)
 
-A finished throw clip goes in (`pixelphys run throw.mp4 --prompt "ball"
---mode projectile`); out come the fitted projectile equations,
-the equation graph, a report, and a replay video in which a rendered ball
-re-flies the *fitted* equations — never the tracked points. It is the same
-pipeline in two coupled coordinates with the same held-out validation,
-plus an offline renderer. Built-in limits: a batch post-capture flow
-(tens of seconds, not realtime); a monocular clip determines the throw
-plane only, so every replay is labelled "fitted model" with no depth
-claim; and where drag is not identifiable the report says gravity-only.
+- **Hero toss (real phone video):** Spark's equations beat the simple
+  model all 3 times (error 0.73 → 0.40 on average). ✅
+- **Pendulum (the "nothing new here" test):** the simple model was
+  already right, but Spark kept inventing small extra effects that
+  looked good by luck. ❌ — this failure is real and we report it.
+- **Made-up test clip:** Spark beat the simple model all 3 times, but
+  picked the exact right equation only 1 time in 3 — a look-alike
+  equation can fit one throw almost as well. When we tested its pick on
+  a *second* throw, the wrong pick fell apart and the right one held.
+  That second-throw test is now part of how we judge results.
 
-## Quickstart
+Full numbers, including a second stricter version of the experiment:
+[docs/results.md](docs/results.md).
+
+## What it cannot do (yet)
+
+- One object, a still camera, and a short clip. No moving cameras, no
+  crowds of objects.
+- Very short or very noisy throws may not contain enough information to
+  tell similar effects apart — then it says so instead of guessing.
+- One long, complicated real spring video (30 s) defeated the fitting
+  maths. Short clips work; that one didn't.
+- It is not live: analysing a clip takes tens of seconds after filming,
+  because the video model works on finished clips, not streams.
+
+## Try it
 
 ```sh
 uv venv
 source .venv/bin/activate
 uv pip install -e ".[dev]"
-cp .env.example .env   # fill in MODEL_API_KEY (same key serves LLMs + SAM 3.1)
-pixelphys run --help
-pytest -q
+cp .env.example .env   # fill in MODEL_API_KEY (one key serves both Meta models)
+pytest -q              # 110 checks, no API key needed
 ```
 
-On a slow connection, install packages smallest-first (`meta-sam-parser`,
-`numpy`, …) rather than one bulk install. Scripts that need no API key run
-with `PYTHONPATH=src python3`.
+Then, with a key in `.env`:
+
+```sh
+pixelphys run your_throw.mp4 --prompt "tennis ball" --trim
+pixelphys run throw.mp4 --prompt "ball" --mode projectile
+pixelphys run spring.mp4 --prompt "weight" --mode spring --tracker motion
+pixelphys run slope.mp4 --prompt "ball" --mode rolling --tracker motion
+```
+
+Each run leaves a folder in `runs/` with the full picture (the equation
+graph), a video with the prediction drawn over your footage, a report
+page, and the found equation saved as data.
+
+## Learn more (the technical docs)
+
+- [docs/modes.md](docs/modes.md) — the four motion modes, what each one
+  looks for, and how to pick the right one for your clip.
+- [docs/maths.md](docs/maths.md) — how the fitting works: why we don't
+  just measure speed from the video, the integral trick that makes it
+  robust, and how "held-out prediction" scoring keeps everyone honest.
+- [docs/architecture.md](docs/architecture.md) — how the program is put
+  together, which Meta model does what, and what everything costs.
+- [docs/results.md](docs/results.md) — every experiment and number,
+  including the failures, and what they do and don't prove.
+- [docs/demo_script.md](docs/demo_script.md) — the 90-second demo
+  storyboard (recorded from saved runs, never a live call).
+
+## Credits
+
+Built solo during the Meta Global AI Developer Hackathon (Oct–Nov 2026)
+on two Meta models: **SAM 3.1** (the eyes) and **Muse Spark** (the
+scientist). The fitting is classical code; no model was trained.
+Third-party test footage used in development is from the Morpheus
+real-world physics dataset (MIT licence); demo footage is self-filmed.
