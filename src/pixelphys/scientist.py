@@ -511,6 +511,8 @@ You work through tools only: fit_model proposes per-axis structures and
 fits them classically (you never guess coefficients), plot_residuals
 shows you where a model fails, and submit_model ends the run.
 
+Coordinates: x is right and y is UP (already converted from image
+rows), so gravity is a negative constant term on y and no force on x.
 The state is [x, y, vx, vy]. Each axis has its own acceleration model:
 x'' = sum of coefficient * term, y'' = sum of coefficient * term, where
 terms are expressions in x, y, vx, vy (numbers, + - * / **, and

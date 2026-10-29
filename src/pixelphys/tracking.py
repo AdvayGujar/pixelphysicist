@@ -224,6 +224,76 @@ SYNTHETIC_DARK_LOW = (0, 0, 0)
 SYNTHETIC_DARK_HIGH = (180, 255, 60)
 
 
+def track_motion_clip(path: Path, fps: float | None = None,
+                      diff_thresh: int = 25, min_area: float = 20.0,
+                      max_jump_px: float = 150.0) -> list[Observation]:
+    """Frame-difference tracker for static cameras (Morpheus fix).
+
+    The HSV fallback picks the largest matching contour per frame, which
+    on cluttered real footage locks onto static background objects and
+    identity-hops between them -- the tracked "trajectory" is then pure
+    background. With a static camera the moving object is what changes:
+    subtract a median background, take moving contours, and keep the one
+    nearest the previous centroid (largest when reacquiring).
+    """
+    import cv2
+    import numpy as np
+
+    fps = fps if fps is not None else clip_fps(path)
+    capture = cv2.VideoCapture(str(path))
+    frames: list[np.ndarray] = []
+    try:
+        while True:
+            ok, frame = capture.read()
+            if not ok:
+                break
+            frames.append(cv2.cvtColor(frame, cv2.COLOR_BGR2GRAY))
+    finally:
+        capture.release()
+    if not frames:
+        return []
+    sample = frames[:: max(1, len(frames) // 25)]
+    background = np.median(np.stack(sample), axis=0).astype(np.uint8)
+    kernel = np.ones((3, 3), dtype=np.uint8)
+    observations: list[Observation] = []
+    prev: tuple[float, float] | None = None
+    for idx, gray in enumerate(frames):
+        mask = cv2.threshold(cv2.absdiff(gray, background),
+                             diff_thresh, 255, cv2.THRESH_BINARY)[1]
+        mask = cv2.morphologyEx(mask, cv2.MORPH_OPEN, kernel)
+        contours, _ = cv2.findContours(mask, cv2.RETR_EXTERNAL,
+                                       cv2.CHAIN_APPROX_SIMPLE)
+        candidates = []
+        for contour in contours:
+            area = float(cv2.contourArea(contour))
+            if area < min_area:
+                continue
+            moments = cv2.moments(contour)
+            if moments["m00"] <= 0:
+                continue
+            cx = moments["m10"] / moments["m00"]
+            cy = moments["m01"] / moments["m00"]
+            x, y, w, h = cv2.boundingRect(contour)
+            candidates.append((area, cx, cy,
+                                 (float(x), float(y), float(x + w), float(y + h))))
+        if not candidates:
+            continue
+        if prev is not None:
+            near = [c for c in candidates
+                    if float(np.hypot(c[1] - prev[0], c[2] - prev[1])) <= max_jump_px]
+            chosen = (min(near, key=lambda c: float(np.hypot(c[1] - prev[0],
+                                                             c[2] - prev[1])))
+                      if near else max(candidates, key=lambda c: c[0]))
+        else:
+            chosen = max(candidates, key=lambda c: c[0])
+        area, cx, cy, bbox = chosen
+        prev = (cx, cy)
+        observations.append(Observation(
+            frame_idx=idx, t=idx / fps, cx=float(cx), cy=float(cy),
+            bbox=bbox, mask_area=area, confidence=0.5))
+    return observations
+
+
 def track_color_clip(path: Path, low: tuple[int, int, int] = TENNIS_GREEN_LOW,
                      high: tuple[int, int, int] = TENNIS_GREEN_HIGH,
                      fps: float | None = None) -> list[Observation]:

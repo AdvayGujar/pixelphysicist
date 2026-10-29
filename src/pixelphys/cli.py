@@ -28,8 +28,10 @@ def build_parser() -> argparse.ArgumentParser:
     run = sub.add_parser("run", help="Track, fit, discover, predict, render.")
     run.add_argument("clip", help="Path to input clip.")
     run.add_argument("--prompt", required=True, help="Object description for SAM.")
-    run.add_argument("--tracker", default="auto", choices=("auto", "sam_video", "color"),
-                     help="Sensor backend (auto tries SAM, falls back to color).")
+    run.add_argument("--tracker", default="auto",
+                     choices=("auto", "sam_video", "color", "motion"),
+                     help="Sensor backend (auto: SAM, then the first "
+                          "plausible offline track: color, then motion).")
     run.add_argument("--axis", default="y", choices=("x", "y"),
                      help="1-DOF coordinate axis (y = vertical toss, x = rest-relative).")
     run.add_argument("--trim", action="store_true",
@@ -47,8 +49,26 @@ def build_parser() -> argparse.ArgumentParser:
     return parser
 
 
+def _track_plausible(obs) -> bool:
+    """Sanity gate for offline tracks (Morpheus fix).
+
+    A usable ballistic track moves: median frame-to-frame step in a sane
+    band and a real spatial span. Static background contours (the HSV
+    fallback locking onto furniture) fail both halves of this test.
+    """
+    if len(obs) < 10:
+        return False
+    pts = np.array([[o.cx, o.cy] for o in obs], dtype=float)
+    steps = np.hypot(*np.diff(pts, axis=0).T)
+    span = float(np.ptp(pts[:, 0]) + np.ptp(pts[:, 1]))
+    # Lower bound matters: the Morpheus HSV track sat on static furniture
+    # (median step 1.7 px of contour wobble) yet spanned the whole frame.
+    # Every real track in this project moves >= ~15 px/frame median.
+    return bool(5.0 <= float(np.median(steps)) <= 80.0 and span > 40.0)
+
+
 def track_observations(clip: Path, prompt: str, tracker: str):
-    """SAM video primary, HSV color fallback. Returns (observations, used)."""
+    """SAM video primary; offline fallbacks gated by plausibility."""
     from . import tracking as tr
 
     if tracker in ("sam_video", "auto"):
@@ -61,17 +81,30 @@ def track_observations(clip: Path, prompt: str, tracker: str):
         except Exception as exc:  # noqa: BLE001 - fallback is the design
             if tracker == "sam_video":
                 raise
-            print(f"SAM tracking failed ({exc}); falling back to color.", flush=True)
-    obs = None
-    for low, high in ((tr.TENNIS_GREEN_LOW, tr.TENNIS_GREEN_HIGH),
-                      (tr.SYNTHETIC_DARK_LOW, tr.SYNTHETIC_DARK_HIGH)):
-        obs = tr.track_color_clip(clip, low=low, high=high)
+            print(f"SAM tracking failed ({exc}); trying offline trackers.",
+                  flush=True)
+    if tracker == "motion":
+        obs = tr.track_motion_clip(clip)
+        if len(obs) < 2:
+            raise ValueError(f"motion tracker found only {len(obs)} frames")
+        return obs, "motion"
+    candidates: list[tuple[str, list]] = []
+    for name, low, high in (("color", tr.TENNIS_GREEN_LOW, tr.TENNIS_GREEN_HIGH),
+                            ("color", tr.SYNTHETIC_DARK_LOW, tr.SYNTHETIC_DARK_HIGH)):
+        candidates.append((name, tr.track_color_clip(clip, low=low, high=high)))
+    candidates.append(("motion", tr.track_motion_clip(clip)))
+    for name, obs in candidates:
+        if _track_plausible(obs):
+            if name == "motion" and candidates[0][1]:
+                print("color tracks look like static background; "
+                      "using the motion track.", flush=True)
+            return obs, name
+    for name, obs in candidates:
         if len(obs) >= 2:
-            break
-    assert obs is not None
-    if len(obs) < 2:
-        raise ValueError(f"color tracker found only {len(obs)} frames")
-    return obs, "color"
+            print(f"warning: no plausible offline track; using {name} "
+                  f"({len(obs)} obs) -- expect weak physics.", flush=True)
+            return obs, name
+    raise ValueError("all offline trackers found < 2 frames")
 
 
 def to_coordinate(obs, axis: str, trim: bool, scale: float | None = None,
@@ -267,11 +300,28 @@ def run_1d(args, clip: Path, out_dir: Path, obs, used: str,
     return 0
 
 
+def projectile_coordinates(xs: np.ndarray, ys: np.ndarray,
+                           scale: float | None = None,
+                           ) -> tuple[np.ndarray, np.ndarray, float]:
+    """Image pixels -> physics coordinates: origin at first sample, y UP.
+
+    Returns (x, y, factor) where image = (x0 + x*factor, y0 - y*factor).
+    Feeding raw cy (down-positive, corner origin) to the projectile
+    fitter flips gravity's sign, poisons the constant term with the
+    corner offset, and breaks the gravity-only control (Morpheus fix).
+    """
+    factor = 1.0 if scale is None else float(scale)
+    x = (np.asarray(xs, dtype=float) - float(xs[0])) / factor
+    y = -(np.asarray(ys, dtype=float) - float(ys[0])) / factor
+    return x, y, factor
+
+
 def run_projectile(args, clip: Path, out_dir: Path, obs, used: str) -> int:
     """Coupled 2-DOF path: track -> x(t),y(t) -> projectile Spark loop.
 
-    Coordinates are raw smoothed pixels (mirrors the tracked round-trip
-    test); trim uses the vertical free-flight window when requested.
+    Coordinates are physics coordinates (origin at the window start,
+    y up; metres when --scale is given, else pixels). Trim uses the
+    vertical free-flight window when requested.
     """
     t, cx, cy = _clean_grid(obs)
     xs, ys = T.smooth_position(cx), T.smooth_position(cy)
@@ -279,10 +329,12 @@ def run_projectile(args, clip: Path, out_dir: Path, obs, used: str) -> int:
         qv = T.vertical_q(ys)
         start, end = T.trim_free_flight(t, qv)
         t, xs, ys = t[start:end], xs[start:end], ys[start:end]
+    origin_px = (float(xs[0]), float(ys[0]))
+    xs, ys, factor = projectile_coordinates(xs, ys, args.scale)
     cut = int(len(t) * 0.6)
     t_fit, x_fit, y_fit = t[:cut], xs[:cut], ys[:cut]
     t_held, x_held, y_held = t[cut:], xs[cut:], ys[cut:]
-    units = "px"
+    units = "m" if args.scale is not None else "px"
 
     tools = S.ProjectileTools(t_fit, x_fit, y_fit, t_held, x_held, y_held,
                               out_dir,
@@ -316,7 +368,9 @@ def run_projectile(args, clip: Path, out_dir: Path, obs, used: str) -> int:
                     "explanation": result.explanation},
          "transcript": result.transcript}, indent=1))
 
-    gravity = P.score_projectile(["1"], ["1"],
+    # Gravity-only control: no horizontal force, constant (negative,
+    # y-up) acceleration on y. "0" is a valid zero term in the grammar.
+    gravity = P.score_projectile(["0"], ["1"],
                                  t_fit, x_fit, y_fit, t_held, x_held, y_held)
     grid = np.concatenate([t_fit, t_held])
 
@@ -337,7 +391,7 @@ def run_projectile(args, clip: Path, out_dir: Path, obs, used: str) -> int:
         bterms = base.terms_x if coord == "x" else base.terms_y
         bcoeffs = base.coeffs_x if coord == "x" else base.coeffs_y
         gcoeffs = (gravity.coeffs_x if coord == "x" else gravity.coeffs_y)
-        gterms = ["1"]
+        gterms = ["0"] if coord == "x" else ["1"]
         eq_paths.append(R.plot_equation(
             t_fit, fit_c, t_held, held_c,
             bterms, bcoeffs, 0.0, 0.0, base.held_nrmse,
@@ -355,20 +409,32 @@ def run_projectile(args, clip: Path, out_dir: Path, obs, used: str) -> int:
         list(final_entry.terms_x), list(final_entry.terms_y),
         np.asarray(final_entry.coeffs_x), np.asarray(final_entry.coeffs_y),
         grid, tuple(float(v) for v in final_entry.state0))
+    # Physics (x right, y up, window origin) -> image pixels for drawing.
+    img_xy = np.column_stack([origin_px[0] + fpx * factor,
+                              origin_px[1] - fpy * factor])
     overlay_path = R.render_overlay(
-        clip, grid, np.column_stack([fpx, fpy]),
+        clip, grid, img_xy,
         out_dir / "overlay.mp4",
         fps=float(1.0 / np.median(np.diff(grid))) if len(grid) > 1 else 30.0,
         t_span=(float(grid[0]), float(grid[-1])))
-    replay_path = R.render_replay_2d(
+    import cv2 as _cv2
+
+    _cap = _cv2.VideoCapture(str(clip))
+    frame_size = (int(_cap.get(_cv2.CAP_PROP_FRAME_WIDTH)),
+                  int(_cap.get(_cv2.CAP_PROP_FRAME_HEIGHT)))
+    _cap.release()
+    replay_path = R.render_replay_pixels(
         list(final_entry.terms_x), np.asarray(final_entry.coeffs_x),
         list(final_entry.terms_y), np.asarray(final_entry.coeffs_y),
         tuple(float(v) for v in final_entry.state0), grid,
-        out_dir / "replay.mp4",
-        caption=f"x''={R.render_equation(final_entry.terms_x, final_entry.coeffs_x, lhs='x')[:60]}")
+        out_dir / "replay.mp4", origin_px=origin_px, factor=factor,
+        frame_size=frame_size,
+        caption=R.render_equation(final_entry.terms_x, final_entry.coeffs_x, lhs="x''")[:60])
     model = {
         "clip": str(clip), "prompt": args.prompt, "tracker": used,
         "mode": "projectile", "trim": args.trim, "units": units,
+        "px_per_m": args.scale, "origin_px": list(origin_px),
+        "y_axis": "up (converted from image rows)",
         "baseline": {"terms_x": list(base.terms_x),
                      "terms_y": list(base.terms_y),
                      "coeffs_x": [float(c) for c in base.coeffs_x],
@@ -391,15 +457,15 @@ def run_projectile(args, clip: Path, out_dir: Path, obs, used: str) -> int:
     (out_dir / "model.json").write_text(json.dumps(model, indent=1))
     R.build_report(
         out_dir / "report.html", f"pixelphys run (projectile): {clip.name}",
-        R.render_equation(final_entry.terms_x, final_entry.coeffs_x, lhs="x")
+        R.render_equation(final_entry.terms_x, final_entry.coeffs_x, lhs="x''")
         + " ; "
-        + R.render_equation(final_entry.terms_y, final_entry.coeffs_y, lhs="y"),
+        + R.render_equation(final_entry.terms_y, final_entry.coeffs_y, lhs="y''"),
         units,
         [{"model": "baseline (A)",
           "terms": list(base.terms_x) + list(base.terms_y),
           "held_nrmse": base.held_nrmse, "bic": base.bic,
           "train_rmse": base.train_rmse, "rounds": 0, "submitted": True},
-         {"model": "gravity-only (control)", "terms": ["1", "1"],
+         {"model": "gravity-only (control)", "terms": ["0 (x)", "1 (y)"],
           "held_nrmse": gravity.held_nrmse, "bic": gravity.bic,
           "train_rmse": gravity.train_rmse, "rounds": 0, "submitted": True},
          {"model": "final (B)",
@@ -409,8 +475,12 @@ def run_projectile(args, clip: Path, out_dir: Path, obs, used: str) -> int:
           "submitted": result.submitted}],
         eq_paths, transcript=result.explanation,
         cost_usd=result.cost_usd)
-    print(f"equation x: {R.render_equation(final_entry.terms_x, final_entry.coeffs_x, lhs='x')} [{units}]")
-    print(f"equation y: {R.render_equation(final_entry.terms_y, final_entry.coeffs_y, lhs='y')} [{units}]")
+    eq_x = R.render_equation(final_entry.terms_x, final_entry.coeffs_x,
+                             lhs="x''")
+    eq_y = R.render_equation(final_entry.terms_y, final_entry.coeffs_y,
+                             lhs="y''")
+    print(f"equation x: {eq_x} [{units}]")
+    print(f"equation y: {eq_y} [{units}]")
     print(f"held NRMSE: baseline {base.held_nrmse:.4f} / "
           f"gravity-only {gravity.held_nrmse:.4f} -> final {final_entry.held_nrmse:.4f}")
     print(f"submitted={result.submitted} rounds={result.rounds} "

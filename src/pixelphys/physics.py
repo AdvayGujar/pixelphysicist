@@ -156,8 +156,12 @@ def coeff_bounds(terms: list[str], t: np.ndarray, q: np.ndarray) -> tuple[np.nda
     velocity = estimate_velocity(t_arr, q_arr)
     basis = basis_matrix(clean, q_arr, velocity)
     peaks = np.max(np.abs(basis), axis=0)
-    peaks = np.maximum(peaks, 1e-300)
-    ceiling = COEFF_MARGIN * scale / peaks
+    # An identically-zero term (e.g. "0", the projectile gravity control's
+    # x slot) has no scale: pin its coefficient to 0 instead of dividing
+    # by ~0 and handing least_squares an infinite bound.
+    ceiling = np.where(peaks > 0,
+                       COEFF_MARGIN * scale / np.maximum(peaks, 1e-300),
+                       COEFF_MARGIN * scale)
     return -ceiling, ceiling
 
 
@@ -334,9 +338,13 @@ def fit_terms(terms: list[str], t: np.ndarray, q: np.ndarray,
     max_nfev = MAX_NFEV_PER_VAR * (n_terms + 2)
     try:
         for index, start in enumerate(starts):
+            # x_scale by parameter magnitude: pixel-scale coefficients
+            # (~1e2) next to ~1 drag coefficients otherwise starve the
+            # finite-difference Jacobian and burn the whole nfev cap.
             result = least_squares(residual, start, bounds=(lower, upper),
                                    max_nfev=max_nfev, ftol=ftol,
-                                   xtol=xtol, gtol=gtol)
+                                   xtol=xtol, gtol=gtol,
+                                   x_scale=np.maximum(np.abs(start), 1.0))
             if (result.success and np.all(np.isfinite(result.x))
                     and np.isfinite(result.cost) and result.cost < best_cost):
                 best_cost = result.cost
@@ -582,8 +590,10 @@ def _projectile_setup(terms_x: list[str], terms_y: list[str],
 
 
 def _axis_bounds_2d(scale: float, basis: np.ndarray) -> tuple[np.ndarray, np.ndarray]:
-    peaks = np.maximum(np.max(np.abs(basis), axis=0), 1e-300)
-    ceiling = COEFF_MARGIN * scale / peaks
+    peaks = np.max(np.abs(basis), axis=0)
+    ceiling = np.where(peaks > 0,
+                       COEFF_MARGIN * scale / np.maximum(peaks, 1e-300),
+                       COEFF_MARGIN * scale)
     return -ceiling, ceiling
 
 
@@ -642,7 +652,8 @@ def fit_projectile(terms_x: list[str], terms_y: list[str],
         for index, start in enumerate(starts):
             result = least_squares(residual, start, bounds=(lower, upper),
                                    max_nfev=max_nfev, ftol=SHOOT_FTOL,
-                                   xtol=SHOOT_XTOL, gtol=SHOOT_GTOL)
+                                   xtol=SHOOT_XTOL, gtol=SHOOT_GTOL,
+                                   x_scale=np.maximum(np.abs(start), 1.0))
             if (result.success and np.all(np.isfinite(result.x))
                     and np.isfinite(result.cost) and result.cost < best_cost):
                 best_cost = result.cost
