@@ -61,10 +61,13 @@ def _track_plausible(obs) -> bool:
     pts = np.array([[o.cx, o.cy] for o in obs], dtype=float)
     steps = np.hypot(*np.diff(pts, axis=0).T)
     span = float(np.ptp(pts[:, 0]) + np.ptp(pts[:, 1]))
-    # Lower bound matters: the Morpheus HSV track sat on static furniture
-    # (median step 1.7 px of contour wobble) yet spanned the whole frame.
-    # Every real track in this project moves >= ~15 px/frame median.
-    return bool(5.0 <= float(np.median(steps)) <= 80.0 and span > 40.0)
+    # Lower bound: the Morpheus HSV track sat on static furniture
+    # (median step 1.7 px of contour wobble) yet spanned the frame.
+    # Teleports: identity-hoppers spend a large share of steps jumping
+    # between objects; a real single-object track rarely does.
+    jump_share = float((steps > 60.0).mean()) if len(steps) else 0.0
+    return bool(2.0 <= float(np.median(steps)) <= 80.0
+                and span > 40.0 and jump_share <= 0.2)
 
 
 def track_observations(clip: Path, prompt: str, tracker: str):
@@ -74,6 +77,11 @@ def track_observations(clip: Path, prompt: str, tracker: str):
     if tracker in ("sam_video", "auto"):
         try:
             fps = tr.clip_fps(clip)
+            n_frames = tr.clip_frame_count(clip)
+            if n_frames > 1500:
+                print(f"warning: {n_frames} frames -- SAM bills per frame "
+                      f"(~${n_frames * 0.20 / 1000:.2f}) and tracking "
+                      "will take a while.", flush=True)
             obs = tr.track_clip(clip, prompt, fps)
             if len(obs) < 2:
                 raise ValueError(f"SAM tracked only {len(obs)} frames")
@@ -167,6 +175,8 @@ def main(argv: list[str] | None = None) -> int:
         pivot = (px, py)
     if args.trim and pivot is not None:
         parser.error("--trim trims toss free-flight; do not combine it with --pivot")
+    if args.scale is not None and args.scale <= 0:
+        parser.error(f"--scale must be a positive px/m value, got {args.scale}")
     # Finding 12: pre-flight before any compute (tracking burns API calls).
     import os
 
@@ -186,11 +196,19 @@ def main(argv: list[str] | None = None) -> int:
               "pivot": args.pivot, "effort": args.effort}
     (out_dir / "config.json").write_text(json.dumps(config, indent=1))
 
-    obs, used = track_observations(clip, args.prompt, args.tracker)
-    T.save_observations(obs, out_dir / "observations.json")
-    if args.mode == "projectile":
-        return run_projectile(args, clip, out_dir, obs, used)
-    return run_1d(args, clip, out_dir, obs, used, pivot)
+    try:
+        obs, used = track_observations(clip, args.prompt, args.tracker)
+        T.save_observations(obs, out_dir / "observations.json")
+        if args.mode == "projectile":
+            return run_projectile(args, clip, out_dir, obs, used)
+        return run_1d(args, clip, out_dir, obs, used, pivot)
+    except ValueError as exc:
+        # Data problems (too few points, gaps, bad trim) are a clean
+        # refusal with the partial run kept, never a traceback.
+        print(f"run failed: {exc}", flush=True)
+        print(f"partial run kept in {out_dir} (config, observations).",
+              flush=True)
+        return 2
 
 
 def run_1d(args, clip: Path, out_dir: Path, obs, used: str,
@@ -210,18 +228,25 @@ def run_1d(args, clip: Path, out_dir: Path, obs, used: str,
         print(f"partial run kept in {out_dir} (config, observations).", flush=True)
         return 2
     base, final_entry = tools.baseline, tools.models[result.final_model_id].scored
-    if not base.ok:
-        print("baseline fit failed; cannot score candidates. "
-              f"Partial run kept in {out_dir}.", flush=True)
-        return 2
+    # Finding 2: the gravity-only control belongs in every report, or the
+    # demo narrative presents drag as the win while gravity wins off-screen.
+    gravity = P.score_candidate(["1"], t_fit, q_fit, t_held, q_held)
     if not final_entry.ok:
         print("no fitted model survived; nothing to render. "
               f"Partial run kept in {out_dir}.", flush=True)
         return 2
-    # Finding 2: the gravity-only control belongs in every report, or the
-    # Finding 2: the gravity-only control belongs in every report, or the
-    # demo narrative presents drag as the win while gravity wins off-screen.
-    gravity = P.score_candidate(["1"], t_fit, q_fit, t_held, q_held)
+    # A baseline whose rollout explodes (over-parameterized on short
+    # windows) must not abort the run: Spark's candidates are scored
+    # independently, and gravity stands in for the display curve.
+    base_curve = base
+    if not base.ok:
+        if not gravity.ok:
+            print("baseline fit failed; cannot score candidates. "
+                  f"Partial run kept in {out_dir}.", flush=True)
+            return 2
+        print(f"warning: baseline fit failed ({base.error}); "
+              "gravity-only stands in as the display baseline.", flush=True)
+        base_curve = gravity
     (out_dir / "transcript.json").write_text(json.dumps(
         {"result": {"terms": result.terms, "held_nrmse": result.held_nrmse,
                     "bic": result.bic, "rounds": result.rounds,
@@ -234,7 +259,8 @@ def run_1d(args, clip: Path, out_dir: Path, obs, used: str,
                           grid, (float(final_entry.q0), float(final_entry.v0)))
     eq_path = R.plot_equation(
         t_fit, q_fit, t_held, q_held,
-        base.terms, base.coeffs, base.q0, base.v0, base.held_nrmse,
+        base_curve.terms, base_curve.coeffs, base_curve.q0, base_curve.v0,
+        base_curve.held_nrmse,
         final_entry.terms, final_entry.coeffs, final_entry.q0, final_entry.v0,
         final_entry.held_nrmse, out_dir / "plots" / "equation.png",
         units=units, title=f"{clip.name} ({used}, {scale_note})",
@@ -292,7 +318,7 @@ def run_1d(args, clip: Path, out_dir: Path, obs, used: str,
         [eq_path], transcript="\n".join(summary_lines),
         cost_usd=result.cost_usd)
     print(f"equation: {R.render_equation(final_entry.terms, final_entry.coeffs)} [{units}]")
-    print(f"held NRMSE: baseline {base.held_nrmse:.4f} / "
+    print(f"held NRMSE: baseline {base_curve.held_nrmse:.4f} / "
           f"gravity-only {gravity.held_nrmse:.4f} -> final {final_entry.held_nrmse:.4f}")
     print(f"submitted={result.submitted} rounds={result.rounds} "
           f"cost=${result.cost_usd:.4f} tracker={used}")
@@ -352,10 +378,6 @@ def run_projectile(args, clip: Path, out_dir: Path, obs, used: str) -> int:
         return 2
     base = tools.baseline
     final_entry = tools.models[result.final_model_id].scored
-    if not base.ok:
-        print("baseline fit failed; cannot score candidates. "
-              f"Partial run kept in {out_dir}.", flush=True)
-        return 2
     if not final_entry.ok:
         print("no fitted model survived; nothing to render. "
               f"Partial run kept in {out_dir}.", flush=True)
@@ -372,6 +394,17 @@ def run_projectile(args, clip: Path, out_dir: Path, obs, used: str) -> int:
     # y-up) acceleration on y. "0" is a valid zero term in the grammar.
     gravity = P.score_projectile(["0"], ["1"],
                                  t_fit, x_fit, y_fit, t_held, x_held, y_held)
+    # Same resilience as the 1-DOF path: an exploding baseline rollout
+    # must not abort a run whose candidates scored fine.
+    base_curve = base
+    if not base.ok:
+        if not gravity.ok:
+            print("baseline fit failed; cannot score candidates. "
+                  f"Partial run kept in {out_dir}.", flush=True)
+            return 2
+        print(f"warning: baseline fit failed ({base.error}); "
+              "gravity-only stands in as the display baseline.", flush=True)
+        base_curve = gravity
     grid = np.concatenate([t_fit, t_held])
 
     def _rollout(scored) -> tuple[np.ndarray, np.ndarray]:
@@ -381,20 +414,20 @@ def run_projectile(args, clip: Path, out_dir: Path, obs, used: str) -> int:
             grid, tuple(float(v) for v in scored.state0))
         return px, py
 
-    base_x, base_y = _rollout(base)
+    base_x, base_y = _rollout(base_curve)
     grav_x, grav_y = _rollout(gravity)
     fin_x, fin_y = _rollout(final_entry)
     eq_paths = []
     for coord, fit_c, held_c in (("x", x_fit, x_held), ("y", y_fit, y_held)):
         terms = final_entry.terms_x if coord == "x" else final_entry.terms_y
         coeffs = final_entry.coeffs_x if coord == "x" else final_entry.coeffs_y
-        bterms = base.terms_x if coord == "x" else base.terms_y
-        bcoeffs = base.coeffs_x if coord == "x" else base.coeffs_y
+        bterms = base_curve.terms_x if coord == "x" else base_curve.terms_y
+        bcoeffs = base_curve.coeffs_x if coord == "x" else base_curve.coeffs_y
         gcoeffs = (gravity.coeffs_x if coord == "x" else gravity.coeffs_y)
         gterms = ["0"] if coord == "x" else ["1"]
         eq_paths.append(R.plot_equation(
             t_fit, fit_c, t_held, held_c,
-            bterms, bcoeffs, 0.0, 0.0, base.held_nrmse,
+            bterms, bcoeffs, 0.0, 0.0, base_curve.held_nrmse,
             terms, coeffs, 0.0, 0.0, final_entry.held_nrmse,
             out_dir / "plots" / f"equation_{coord}.png",
             units=units, title=f"{clip.name} {coord}(t) ({used})",
@@ -481,7 +514,7 @@ def run_projectile(args, clip: Path, out_dir: Path, obs, used: str) -> int:
                              lhs="y''")
     print(f"equation x: {eq_x} [{units}]")
     print(f"equation y: {eq_y} [{units}]")
-    print(f"held NRMSE: baseline {base.held_nrmse:.4f} / "
+    print(f"held NRMSE: baseline {base_curve.held_nrmse:.4f} / "
           f"gravity-only {gravity.held_nrmse:.4f} -> final {final_entry.held_nrmse:.4f}")
     print(f"submitted={result.submitted} rounds={result.rounds} "
           f"cost=${result.cost_usd:.4f} tracker={used}")

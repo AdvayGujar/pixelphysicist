@@ -240,26 +240,42 @@ def track_motion_clip(path: Path, fps: float | None = None,
     import numpy as np
 
     fps = fps if fps is not None else clip_fps(path)
+    total = clip_frame_count(path)
+    step = max(1, total // 25) if total else 1
+    # Pass 1 (streaming): sample ~25 frames for the median background.
+    # Holding every frame of a long clip in RAM OOMs; never store all.
     capture = cv2.VideoCapture(str(path))
-    frames: list[np.ndarray] = []
+    sample: list[np.ndarray] = []
+    idx = 0
     try:
         while True:
             ok, frame = capture.read()
             if not ok:
                 break
-            frames.append(cv2.cvtColor(frame, cv2.COLOR_BGR2GRAY))
+            if idx % step == 0:
+                sample.append(cv2.cvtColor(frame, cv2.COLOR_BGR2GRAY))
+            idx += 1
     finally:
         capture.release()
-    if not frames:
+    if not sample:
         return []
-    sample = frames[:: max(1, len(frames) // 25)]
     background = np.median(np.stack(sample), axis=0).astype(np.uint8)
     kernel = np.ones((3, 3), dtype=np.uint8)
     observations: list[Observation] = []
+    moving_fractions: list[float] = []
     prev: tuple[float, float] | None = None
-    for idx, gray in enumerate(frames):
+    # Pass 2 (streaming): difference + track, one frame at a time.
+    capture = cv2.VideoCapture(str(path))
+    idx = -1
+    while True:
+        ok, frame = capture.read()
+        if not ok or frame is None:
+            break
+        idx += 1
+        gray = cv2.cvtColor(frame, cv2.COLOR_BGR2GRAY)
         mask = cv2.threshold(cv2.absdiff(gray, background),
                              diff_thresh, 255, cv2.THRESH_BINARY)[1]
+        moving_fractions.append(float((mask > 0).mean()))
         mask = cv2.morphologyEx(mask, cv2.MORPH_OPEN, kernel)
         contours, _ = cv2.findContours(mask, cv2.RETR_EXTERNAL,
                                        cv2.CHAIN_APPROX_SIMPLE)
@@ -291,6 +307,13 @@ def track_motion_clip(path: Path, fps: float | None = None,
         observations.append(Observation(
             frame_idx=idx, t=idx / fps, cx=float(cx), cy=float(cy),
             bbox=bbox, mask_area=area, confidence=0.5))
+    capture.release()
+    # Moving-camera guard: if most of most frames "move", the camera
+    # moved and any track is fabricated camera shake, not physics.
+    if moving_fractions and float(np.median(moving_fractions)) > 0.35:
+        raise ValueError(
+            "most of the frame changes in most frames -- the camera "
+            "appears to move; the motion tracker needs a static camera")
     return observations
 
 

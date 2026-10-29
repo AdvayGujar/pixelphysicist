@@ -10,7 +10,10 @@ import numpy as np
 
 from .tracking import Observation, validate_observations
 
-MIN_POINTS = 30
+# 20, not 30: a sub-second flight at 30 fps yields ~25 tracked points and
+# is fittable (hero trims to 20); downstream guards (trim >= 15, fit needs
+# terms+2) carry the real floors. 30 made short judge clips unanalyzable.
+MIN_POINTS = 20
 SMOOTH_WINDOW = 7
 FIT_FRAC = 0.6
 
