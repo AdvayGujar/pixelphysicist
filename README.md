@@ -28,6 +28,18 @@ and one static camera, in two scientist modes:
 - **Projectile mode** — two coupled coordinates `x(t), y(t)` with terms in
   `x, y, vx, vy`; Spark looks for drag coupled through the speed, e.g.
   `sqrt(vx**2+vy**2)*vx`, with the same coefficient expected on both axes.
+- **Spring mode** (`--mode spring`) — vertical displacement from
+  equilibrium; Spark looks for nonlinear (Duffing) stiffness `q**3` or dry
+  friction outside the linear-spring baseline. Validated end-to-end on
+  the synthetic Duffing clip (submitted `q**3`, coefficients matching
+  truth). Long real spring footage (30 s+) is outside the fitted
+  window envelope — the shooter rollout does not survive it yet.
+- **Rolling mode** (`--mode rolling`) — distance along a slope; Spark
+  looks for Coulomb rolling friction `sign(v)`, which only separates
+  from the constant gravity term when the ball reverses direction.
+  On the synthetic slope it recovered both the friction (−139 vs
+  −137.5 px/s²) and gravity terms; a one-direction roll is reported
+  as the constant-deceleration case it is.
 
 ## Current state (Day 5 done: ablation collected, G5 RED)
 

@@ -174,6 +174,167 @@ def render_projectile_2d(mp4_path: Path, json_path: Path,
     return {"mp4": mp4_path, "json": json_path}
 
 
+SPRING_CENTRE_Y_PX = FRAME_H // 2
+
+SLOPE_START_PX = (40, GROUND_Y_PX)
+SLOPE_END_PX = (FRAME_W - 40, GROUND_Y_PX - 180)
+
+
+@dataclass(frozen=True)
+class SpringParams:
+    q0: float = 0.55
+    stiffness: float = 22.0
+    damping: float = 0.25
+    cubic: float = 6.0
+    duration_s: float = 4.0
+
+
+def spring_acceleration(q: float, v: float, params: SpringParams) -> float:
+    return -params.stiffness * q - params.damping * v - params.cubic * q**3
+
+
+def integrate_spring(params: SpringParams, dt: float = 1.0 / 240.0) -> tuple[list[float], list[float], list[float]]:
+    times, positions, velocities = [0.0], [params.q0], [0.0]
+    while times[-1] < params.duration_s:
+        q, v = positions[-1], velocities[-1]
+        a1 = spring_acceleration(q, v, params)
+        a2 = spring_acceleration(q + 0.5 * dt * v, v + 0.5 * dt * a1, params)
+        a3 = spring_acceleration(q + 0.5 * dt * (v + 0.5 * dt * a1), v + 0.5 * dt * a2, params)
+        a4 = spring_acceleration(q + dt * (v + 0.5 * dt * a2), v + dt * a3, params)
+        new_q = q + dt * (v + dt * (a1 + a2 + a3) / 6.0)
+        new_v = v + dt * (a1 + 2.0 * a2 + 2.0 * a3 + a4) / 6.0
+        times.append(times[-1] + dt)
+        positions.append(new_q)
+        velocities.append(new_v)
+    return times, positions, velocities
+
+
+def spring_center_px(q: float) -> tuple[int, int]:
+    return (FRAME_W // 2, int(SPRING_CENTRE_Y_PX - q * PX_PER_M))
+
+
+def render_spring(mp4_path: Path, json_path: Path, params: SpringParams = SpringParams(),
+                  fps: int = FPS) -> dict[str, Path]:
+    import cv2
+    import numpy as np
+
+    times, positions, velocities = integrate_spring(params)
+    sampled_t = sample_at_fps(times, times, fps)
+    sampled_q = sample_at_fps(times, positions, fps)
+    sampled_v = sample_at_fps(times, velocities, fps)
+    mp4_path.parent.mkdir(parents=True, exist_ok=True)
+    json_path.parent.mkdir(parents=True, exist_ok=True)
+    truth = {
+        "model": "q''=-k*q-c*v-beta*q**3",
+        "params": {"q0": params.q0, "stiffness": params.stiffness,
+                   "damping": params.damping, "cubic": params.cubic,
+                   "duration_s": params.duration_s},
+        "fps": fps,
+        "px_per_m": PX_PER_M,
+        "centre_y_px": SPRING_CENTRE_Y_PX,
+        "t": sampled_t,
+        "q": sampled_q,
+        "v": sampled_v,
+    }
+    json_path.write_text(json.dumps(truth))
+    writer = cv2.VideoWriter(str(mp4_path), cv2.VideoWriter_fourcc(*"mp4v"), fps, (FRAME_W, FRAME_H))
+    try:
+        for q in sampled_q:
+            frame = np.full((FRAME_H, FRAME_W, 3), BACKGROUND, dtype=np.uint8)
+            cv2.circle(frame, spring_center_px(q), DOT_RADIUS_PX, DOT_COLOR, -1)
+            writer.write(frame)
+    finally:
+        writer.release()
+    return {"mp4": mp4_path, "json": json_path}
+
+
+@dataclass(frozen=True)
+class RollingParams:
+    v0: float = 3.4
+    slope_accel: float = 1.6
+    coulomb: float = 0.55
+    viscous: float = 0.05
+    duration_s: float = 6.0
+
+
+def _sign(v: float) -> float:
+    if v > 0.0:
+        return 1.0
+    if v < 0.0:
+        return -1.0
+    return 0.0
+
+
+def rolling_acceleration(v: float, params: RollingParams) -> float:
+    return -params.slope_accel - params.coulomb * _sign(v) - params.viscous * v
+
+
+def integrate_rolling(params: RollingParams, dt: float = 1.0 / 240.0) -> tuple[list[float], list[float], list[float]]:
+    times, positions, velocities = [0.0], [0.0], [params.v0]
+    while times[-1] < params.duration_s:
+        q, v = positions[-1], velocities[-1]
+        a1 = rolling_acceleration(v, params)
+        a2 = rolling_acceleration(v + 0.5 * dt * a1, params)
+        a3 = rolling_acceleration(v + 0.5 * dt * a2, params)
+        a4 = rolling_acceleration(v + dt * a3, params)
+        new_q = q + dt * (v + dt * (a1 + a2 + a3) / 6.0)
+        new_v = v + dt * (a1 + 2.0 * a2 + 2.0 * a3 + a4) / 6.0
+        times.append(times[-1] + dt)
+        positions.append(new_q)
+        velocities.append(new_v)
+    return times, positions, velocities
+
+
+def _slope_unit_vector() -> tuple[float, float]:
+    import math
+
+    dx = SLOPE_END_PX[0] - SLOPE_START_PX[0]
+    dy = SLOPE_END_PX[1] - SLOPE_START_PX[1]
+    length = math.hypot(dx, dy)
+    return dx / length, dy / length
+
+
+def rolling_center_px(q: float) -> tuple[int, int]:
+    ux, uy = _slope_unit_vector()
+    return (int(SLOPE_START_PX[0] + q * PX_PER_M * ux),
+            int(SLOPE_START_PX[1] + q * PX_PER_M * uy))
+
+
+def render_rolling(mp4_path: Path, json_path: Path, params: RollingParams = RollingParams(),
+                   fps: int = FPS) -> dict[str, Path]:
+    import cv2
+    import numpy as np
+
+    times, positions, velocities = integrate_rolling(params)
+    sampled_t = sample_at_fps(times, times, fps)
+    sampled_q = sample_at_fps(times, positions, fps)
+    sampled_v = sample_at_fps(times, velocities, fps)
+    mp4_path.parent.mkdir(parents=True, exist_ok=True)
+    json_path.parent.mkdir(parents=True, exist_ok=True)
+    truth = {
+        "model": "q''=-a-mu*sign(v)-c*v",
+        "params": {"v0": params.v0, "slope_accel": params.slope_accel,
+                   "coulomb": params.coulomb, "viscous": params.viscous,
+                   "duration_s": params.duration_s},
+        "fps": fps,
+        "px_per_m": PX_PER_M,
+        "t": sampled_t,
+        "q": sampled_q,
+        "v": sampled_v,
+    }
+    json_path.write_text(json.dumps(truth))
+    writer = cv2.VideoWriter(str(mp4_path), cv2.VideoWriter_fourcc(*"mp4v"), fps, (FRAME_W, FRAME_H))
+    try:
+        for q in sampled_q:
+            frame = np.full((FRAME_H, FRAME_W, 3), BACKGROUND, dtype=np.uint8)
+            cv2.line(frame, SLOPE_START_PX, SLOPE_END_PX, (150, 150, 150), 3)
+            cv2.circle(frame, rolling_center_px(q), DOT_RADIUS_PX, DOT_COLOR, -1)
+            writer.write(frame)
+    finally:
+        writer.release()
+    return {"mp4": mp4_path, "json": json_path}
+
+
 def render_toss_drag(mp4_path: Path, json_path: Path, params: TossParams = TossParams()) -> dict[str, Path]:
     times, positions, velocities = integrate_toss(params)
     sampled_q = sample_at_fps(times, positions)

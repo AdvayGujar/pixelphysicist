@@ -40,8 +40,10 @@ def build_parser() -> argparse.ArgumentParser:
                      help="Pixels per meter (default: pixel units).")
     run.add_argument("--pivot", default=None,
                      help="Pivot as X,Y in pixels (pendulum angle coordinate).")
-    run.add_argument("--mode", default="1d", choices=("1d", "projectile"),
-                     help="1-DOF coordinate fit (default) or coupled 2-DOF projectile.")
+    run.add_argument("--mode", default="1d",
+                     choices=("1d", "projectile", "spring", "rolling"),
+                     help="Scientist mode: 1-DOF (default), coupled 2-DOF "
+                          "projectile, spring-mass, or rolling-on-slope.")
     run.add_argument("--effort", default="low",
                      help="Spark reasoning effort (low while tuning).")
     run.add_argument("--out", default=None,
@@ -116,12 +118,16 @@ def track_observations(clip: Path, prompt: str, tracker: str):
 
 
 def to_coordinate(obs, axis: str, trim: bool, scale: float | None = None,
-                  pivot: tuple[float, float] | None = None):
+                  pivot: tuple[float, float] | None = None,
+                  mode: str = "1d"):
     """Cleaned uniform grid plus 1-DOF coordinate and pixel back-mapping.
 
     With ``scale`` (px/m) the coordinate is converted to metres; without
     it the pipeline runs in pixels (Finding 3: never label pixels "m").
     With ``pivot`` the coordinate is the pendulum angle (radians).
+    Mode coordinates: ``spring`` = vertical displacement from the
+    equilibrium (median) position, up positive; ``rolling`` = distance
+    along the image x direction from the window start.
     """
     gaps = np.diff([o.t for o in obs])
     fps = 1.0 / float(np.median(gaps))
@@ -130,7 +136,23 @@ def to_coordinate(obs, axis: str, trim: bool, scale: float | None = None,
     t, cx, cy = T.resample_uniform(obs, fps)
     cx_s, cy_s = T.smooth_position(cx), T.smooth_position(cy)
     to_m = 1.0 if scale is None else 1.0 / scale
-    if pivot is not None:
+    if mode == "spring":
+        rest = float(np.median(cy_s))
+        q = -(cy_s - rest) * to_m
+        x0 = float(np.median(cx_s))
+
+        def to_pixels(q_pred: np.ndarray) -> np.ndarray:
+            return np.column_stack([np.full_like(q_pred, x0),
+                                    rest - q_pred / to_m])
+    elif mode == "rolling":
+        start_x = float(cx_s[0])
+        q = (cx_s - start_x) * to_m
+        y0 = float(np.median(cy_s))
+
+        def to_pixels(q_pred: np.ndarray) -> np.ndarray:
+            return np.column_stack([start_x + q_pred / to_m,
+                                    np.full_like(q_pred, y0)])
+    elif pivot is not None:
         q = T.pendulum_angle(cx_s, cy_s, pivot)
         px0, py0 = float(pivot[0]), float(pivot[1])
         r = float(np.median(np.hypot(cx_s - px0, cy_s - py0)))
@@ -214,15 +236,20 @@ def main(argv: list[str] | None = None) -> int:
 def run_1d(args, clip: Path, out_dir: Path, obs, used: str,
            pivot: tuple[float, float] | None) -> int:
     t, q, to_pixels, fps = to_coordinate(obs, args.axis, args.trim,
-                                         scale=args.scale, pivot=pivot)
+                                         scale=args.scale, pivot=pivot,
+                                         mode=args.mode)
     cut = int(len(t) * 0.6)
     t_fit, q_fit, t_held, q_held = t[:cut], q[:cut], t[cut:], q[cut:]
     units = "px" if args.scale is None else "m"
     scale_note = "pixels" if args.scale is None else f"{args.scale} px/m"
+    system_prompt = {"spring": S.SPRING_SYSTEM_PROMPT,
+                     "rolling": S.ROLLING_SYSTEM_PROMPT}.get(args.mode)
+    control_name = "gravity-only" if args.mode == "1d" else "constant-only"
 
     tools = S.ScientistTools(t_fit, q_fit, t_held, q_held, out_dir)
     try:
-        result = S.run_loop(tools, S.default_chat_fn(args.effort))
+        result = S.run_loop(tools, S.default_chat_fn(args.effort),
+                            system_prompt=system_prompt)
     except RuntimeError as exc:
         print(f"scientist loop failed (transport or API error): {exc}", flush=True)
         print(f"partial run kept in {out_dir} (config, observations).", flush=True)
@@ -266,7 +293,7 @@ def run_1d(args, clip: Path, out_dir: Path, obs, used: str,
         units=units, title=f"{clip.name} ({used}, {scale_note})",
         control_terms=gravity.terms, control_coeffs=gravity.coeffs,
         control_q0=gravity.q0, control_v0=gravity.v0,
-        control_held=gravity.held_nrmse, control_label="gravity-only")
+        control_held=gravity.held_nrmse, control_label=control_name)
     overlay_path = R.render_overlay(clip, grid, to_pixels(fin_q),
                                     out_dir / "overlay.mp4", fps=fps,
                                     t_span=(float(grid[0]), float(grid[-1])))
@@ -308,7 +335,7 @@ def run_1d(args, clip: Path, out_dir: Path, obs, used: str,
         [{"model": "baseline (A)", "terms": list(base.terms),
           "held_nrmse": base.held_nrmse, "bic": base.bic,
           "train_rmse": base.train_rmse, "rounds": 0, "submitted": True},
-         {"model": "gravity-only (control)", "terms": list(gravity.terms),
+         {"model": f"{control_name} (control)", "terms": list(gravity.terms),
           "held_nrmse": gravity.held_nrmse, "bic": gravity.bic,
           "train_rmse": gravity.train_rmse, "rounds": 0, "submitted": True},
          {"model": "final (B)", "terms": list(final_entry.terms),
@@ -319,7 +346,7 @@ def run_1d(args, clip: Path, out_dir: Path, obs, used: str,
         cost_usd=result.cost_usd)
     print(f"equation: {R.render_equation(final_entry.terms, final_entry.coeffs)} [{units}]")
     print(f"held NRMSE: baseline {base_curve.held_nrmse:.4f} / "
-          f"gravity-only {gravity.held_nrmse:.4f} -> final {final_entry.held_nrmse:.4f}")
+          f"{control_name} {gravity.held_nrmse:.4f} -> final {final_entry.held_nrmse:.4f}")
     print(f"submitted={result.submitted} rounds={result.rounds} "
           f"cost=${result.cost_usd:.4f} tracker={used}")
     print(f"wrote {out_dir} (model.json, report.html, overlay.mp4)")

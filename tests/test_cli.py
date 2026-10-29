@@ -126,6 +126,36 @@ def test_replay_pixels_ball_stays_in_frame(tmp_path) -> None:
         cap.release()
 
 
+def test_spring_and_rolling_coordinates() -> None:
+    """Spring: rest-relative vertical (up +). Rolling: distance from start."""
+    from pixelphys.cli import to_coordinate
+
+    obs = tracked_synthetic_obs()
+    t, q_spring, to_px_s, _ = to_coordinate(obs, axis="y", trim=False,
+                                            mode="spring")
+    assert abs(float(np.median(q_spring))) < 30.0  # centred on equilibrium
+    back_s = to_px_s(q_spring)
+    assert back_s.shape == (len(q_spring), 2)
+    t2, q_roll, to_px_r, _ = to_coordinate(obs, axis="y", trim=False,
+                                           mode="rolling")
+    assert q_roll[0] == 0.0
+    back_r = to_px_r(q_roll)
+    assert np.allclose(back_r[:, 0], back_r[0, 0] + q_roll)
+
+
+def test_mode_prompts_exist_and_parser_accepts_modes() -> None:
+    from pixelphys import scientist as S
+    from pixelphys.cli import build_parser
+
+    assert "spring" in S.SPRING_SYSTEM_PROMPT.lower()
+    assert "q**3" in S.SPRING_SYSTEM_PROMPT
+    assert "sign(v)" in S.ROLLING_SYSTEM_PROMPT
+    assert "up-slope" in S.ROLLING_SYSTEM_PROMPT
+    args = build_parser().parse_args(
+        ["run", "clip.mp4", "--prompt", "ball", "--mode", "spring"])
+    assert args.mode == "spring"
+
+
 def test_pixel_units_without_scale() -> None:
     """Without --scale the coordinate stays in pixels (never mislabelled)."""
     obs = tracked_synthetic_obs()
