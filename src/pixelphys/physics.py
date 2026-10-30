@@ -359,6 +359,123 @@ def fit_terms(terms: list[str], t: np.ndarray, q: np.ndarray,
     return best
 
 
+@dataclass
+class FitResultJoint:
+    """Joint fit over several clips: shared coefficients, per-clip ICs."""
+
+    terms: list[str]
+    coeffs: np.ndarray
+    ics: list[tuple[float, float]]
+    cost: float = field(default=float("inf"))
+    start_index: int = field(default=-1)
+
+
+def fit_terms_joint(terms: list[str], clips: list[tuple[np.ndarray, np.ndarray]],
+                    budget_s: float | None = None) -> FitResultJoint:
+    """Shared-coefficient shooting fit over several ``(t, q)`` clips.
+
+    Coefficients are shared; each clip gets its own ``(q0, v0)``. The
+    residual is the concatenation over clips, so one trajectory cannot
+    pin the shared physics to a clip-specific alias (Day-5 ``q*v``
+    distractor). Reuses :func:`simulate`, per-term data-driven bounds,
+    the three-start weak-init scheme, and the wall-clock budget
+    discipline of :func:`fit_terms`.
+    """
+    clean = validate_terms(list(terms))
+    if not isinstance(clips, (list, tuple)) or len(clips) < 2:
+        raise ValueError(f"need >= 2 clips for a joint fit, got {clips!r}")
+    parsed: list[tuple[np.ndarray, np.ndarray]] = []
+    for pair in clips:
+        t_arr = np.asarray(pair[0], dtype=float)
+        q_arr = np.asarray(pair[1], dtype=float)
+        if t_arr.ndim != 1 or len(t_arr) != len(q_arr) or len(t_arr) < 3:
+            raise ValueError("each clip needs a 1-D (t, q) grid of >= 3 points")
+        if not bool(np.all(np.diff(t_arr) > 0)):
+            raise ValueError("time grid must be strictly increasing")
+        parsed.append((t_arr, q_arr))
+    n_terms = len(clean)
+    n_clips = len(parsed)
+    if sum(len(t) for t, _ in parsed) < n_terms + 2 * n_clips:
+        raise ValueError(
+            f"need >= {n_terms + 2 * n_clips} total points for {n_terms} "
+            f"terms + {n_clips} x ICs, got {sum(len(t) for t, _ in parsed)}")
+    for t_arr, q_arr in parsed:
+        if not np.all(np.isfinite(
+                basis_matrix(clean, q_arr, estimate_velocity(t_arr, q_arr)))):
+            raise ValueError(f"non-finite basis values for terms {clean}")
+    # Shared weak start: mean of per-clip weak inits (zeros on failure).
+    weaks = []
+    for t_arr, q_arr in parsed:
+        try:
+            weaks.append(weak_init(clean, t_arr, q_arr))
+        except ValueError:
+            weaks.append(np.zeros(n_terms))
+    weak = np.asarray(np.mean(np.stack(weaks), axis=0), dtype=float)
+    # Coefficient ceiling: most generous across clips (same safe direction
+    # as the single-clip ceiling: noise inflates, which is safe).
+    ceilings = []
+    ic_lowers, ic_uppers, ic_guesses = [], [], []
+    for t_arr, q_arr in parsed:
+        coef_lower, coef_upper = coeff_bounds(clean, t_arr, q_arr)
+        ceilings.append(coef_upper)
+        low, up, q0g, v0g = _ic_bounds(t_arr, q_arr)
+        ic_lowers.append(low)
+        ic_uppers.append(up)
+        ic_guesses.append(np.array([q0g, v0g]))
+    joint_ceiling = np.max(np.stack(ceilings), axis=0)
+    coef_lower = -joint_ceiling
+    coef_upper = joint_ceiling
+    ic_guess = np.concatenate(ic_guesses)
+    lower = np.concatenate([coef_lower] + ic_lowers)
+    upper = np.concatenate([coef_upper] + ic_uppers)
+    starts = [
+        np.concatenate([weak, ic_guess]),
+        np.concatenate([np.zeros(n_terms), ic_guess]),
+        np.concatenate([0.5 * weak, ic_guess]),
+    ]
+    deadline = None if budget_s is None else time.monotonic() + budget_s
+
+    def residual(params: np.ndarray) -> np.ndarray:
+        if deadline is not None and time.monotonic() > deadline:
+            raise _BudgetExceeded(f"fit budget of {budget_s}s exceeded")
+        shared = params[:n_terms]
+        parts = []
+        for i, (t_arr, q_arr) in enumerate(parsed):
+            q0 = float(params[n_terms + 2 * i])
+            v0 = float(params[n_terms + 2 * i + 1])
+            try:
+                pred, _ = simulate(clean, shared, t_arr, (q0, v0))
+            except RuntimeError:
+                return np.full(sum(len(t) for t, _ in parsed), BLOWUP_RESIDUAL)
+            parts.append(pred - q_arr)
+        return np.concatenate(parts)
+
+    best: FitResultJoint | None = None
+    best_cost = float("inf")
+    max_nfev = MAX_NFEV_PER_VAR * (n_terms + 2 * n_clips)
+    try:
+        for index, start in enumerate(starts):
+            result = least_squares(residual, start, bounds=(lower, upper),
+                                   max_nfev=max_nfev, ftol=SHOOT_FTOL,
+                                   xtol=SHOOT_XTOL, gtol=SHOOT_GTOL,
+                                   x_scale=np.maximum(np.abs(start), 1.0))
+            if (result.success and np.all(np.isfinite(result.x))
+                    and np.isfinite(result.cost) and result.cost < best_cost):
+                best_cost = result.cost
+                shared = result.x[:n_terms].copy()
+                ics = [(float(result.x[n_terms + 2 * i]),
+                        float(result.x[n_terms + 2 * i + 1]))
+                       for i in range(n_clips)]
+                best = FitResultJoint(terms=clean, coeffs=shared,
+                                      ics=ics, cost=float(result.cost),
+                                      start_index=index)
+    except _BudgetExceeded as exc:
+        raise RuntimeError(str(exc)) from None
+    if best is None:
+        raise RuntimeError(f"joint shooting fit failed for terms {clean}")
+    return best
+
+
 def score_candidate(terms: list[str], t_fit: np.ndarray, q_fit: np.ndarray,
                     t_held: np.ndarray, q_held: np.ndarray,
                     horizon_s: float = 2.0,
