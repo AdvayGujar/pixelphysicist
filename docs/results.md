@@ -302,3 +302,109 @@ clean recovery, tracked-pair preference) pass before any live run.
   q*v rss 163.51396628083887, BIC 93.3583220948091. Winner: drag.
 - Verdict: drag survives joint fitting; q*v does not. Maps to ablation.csv S
   r2 (drag) vs r1/r3 (q*v).
+
+## 8. Benchmark on public footage (Tier 2)
+
+Runner `scripts/benchmark_morpheus.py` → `results/benchmark.json`
+(date 2026-10-31, tracker motion everywhere, effort low, guard v1 CLI
+default; live cost $0.1045). SAM is the normal path on phone footage;
+motion is the offline fallback used for all dataset clips. Falling-ball
+and pendulum rows are cited, not rerun.
+
+| Clip | Mode | Submitted | Final terms | Final held | Control held | Baseline held | Rounds | Cost |
+|---|---|---|---|---|---|---|---|---|
+| proj_a (38-frame arc) | projectile | False (fallback) | x `[sqrt(vx**2+vy**2)*vx]`, y `[1, sqrt(vx**2+vy**2)*vy]` | 0.040983265258900614 | 0.06493872738431318 | inf (exploded) | 4 | 0.01671625 |
+| proj_b (21-frame arc) | projectile | True | x `[vx]`, y `[1, vy]` | 0.5966609543900796 | 0.5321763891503452 | inf (exploded) | 5 | 0.03366625 |
+| roll_orange (one-direction) | rolling | False (fallback) | `[1, sign(v)]` | 0.006880212647412867 | 0.006880232169345483 | 0.07651727218521275 | 4 | 0.0234915 |
+| spring_long (31 s, 930 pts) | spring | True | `[q, v]` | 1.0116311365953485 | 0.46327599238850214 | inf (exploded) | 5 | 0.0306535 |
+| ball5 (cited §7) | 1d | n/a (mining row) | `[1, abs(v)*v]` | 0.004927063885487741 | 0.03559489976504714 | 0.008344923320049139 | n/a | 0.0 |
+| ball8 (cited §7) | 1d | n/a (mining row) | `[1, abs(v)*v]` | 0.003666150556292589 | 0.034319118996290664 | 0.009315324216663248 | n/a | 0.0 |
+| pendulum_x5 (cited §7) | angle-period check | n/a | `sin(q)` period check | n/a (period 0.34–0.67%) | n/a | n/a | n/a | 0.0 |
+
+Per-category verdicts:
+
+- falling_ball: **works** — sparse drag beats gravity ~7–9× on held-out
+  motion (ball5 0.0356 → 0.0049, ball8 0.0343 → 0.0037), negative
+  coefficient, beats baseline too.
+- projectile: **works-with-limits** — the 38-frame arc's fallback
+  coupled-drag fit beats gravity (0.041 vs 0.065) but is never submitted
+  (baseline exploded, loop falls back); the 21-frame arc submits linear
+  drag that *loses* to gravity (0.597 vs 0.532). Thin arcs plus an
+  exploded baseline defeat the OR guard, which accepts anything beating
+  inf.
+- rolling_orange: **works-with-limits** — fallback `[1, sign(v)]` ties the
+  constant-only control to 5 decimals (0.00688021 vs 0.00688023) while
+  beating the baseline 11× (0.077). A one-direction roll cannot separate
+  Coulomb friction from gravity; the tie is the correct answer here.
+- spring_long: **fails** — the known out-of-envelope clip. Baseline
+  explodes, first attempt exited 2 with nothing surviving, retry
+  submitted `[q, v]` at held 1.01, worse than the control (0.46),
+  accepted only through the broken-baseline path. Confirms the §5 limit.
+- holonomic_pendulum: **works** — 5/5 period agreement 0.34–0.67% (§7).
+
+## 9. Guard v3: held AND BIC, no train (Tier 3, pre-registered)
+
+`scientist.py` guard `"v3"` + `V3_SYSTEM_PROMPT`/`v3_schemas()` (exact-replacement
+versioning like v2); prompt text always matches the enforced guard.
+`scripts/run_ablation.py --guard v3` on the frozen H:3/N:5/S:5 conditions,
+effort low → `results/ablation_v3.json`/`.csv`, cost $0.316988. v1/v2
+files untouched. Pre-registered prediction (from v1/v2 transcripts): N
+stays clean, S submits true drag in ≥3/5, H returns to baseline.
+
+| clip | A held | B mean held | gate |
+|---|---|---|---|
+| H hero | 0.732430311284895 | 0.18722568468499037 (3/3 beat) | GREEN |
+| N pendulum | 0.041287940844683235 | 0.0371763063248367 (rel gap 0.0996, 0/5 clean) | RED |
+| S synthetic tracked | 0.06255632091676147 | 0.008446170268754407 (5/5 correct) | GREEN |
+
+- S 5/5 submitted `[1, abs(v)*v]` (held 0.0084, BIC -65.6, train 0.1174;
+  costs 0.0103–0.0154) — prediction CONFIRMED, and unanimously. v3
+  accepts what v2 rejected: train 0.1174 is +15% over baseline 0.102
+  yet held+BIC both win.
+- H 3/3 found the same sparse drag (held 0.1872) but submitted 0/3:
+  BIC 39.3 loses to baseline 18.6, so v3 rejects. H gate stays GREEN
+  (beats baseline on held) while nothing submits — v3 is stricter
+  than v1 here, which submitted drag once on the OR rule.
+- N 0/5 submitted (fallbacks `[1, q, abs(v)*v]`/`[1, q, v]`/`[1, q, v**3]`,
+  all held 0.0372): held beats baseline ~10% but BIC ~684 loses to
+  645.8, so v3 rejects everything. n_clean counts *submitted*
+  baselines: 0/5 → RED. Prediction "N stays clean" FAILED — v3 keeps
+  submissions clean (nothing spurious submitted) but the gate's
+  cleanliness bar counts unsubmitted fallbacks' exploration, same
+  strictness price v2 paid (v2 N GREEN only because 3/5 submitted the
+  baseline itself).
+- Overall G5 RED (H GREEN, N RED, S GREEN). v3 fixes the S train
+  misfire and holds the submission line, but does not green the gate.
+- Note: v3 condition-A baselines differ slightly from the committed
+  v1/v2 A rows (S 0.06256 vs 0.06220, ~0.6%; H/N in the 6th decimal):
+  HEAD code without any of this task's edits reproduces 0.06256, so
+  the drift predates this task (Day-5 environment), and every v3
+  comparison is internal to v3 (same code for A and B).
+
+Side by side: v1 (S 1/3 correct, N 0/3 clean → RED), v2 (S 0/5
+submitted-correct with 2 true-term fallbacks, N 3/5 clean → RED), v3
+(S 5/5 correct, N 0/5 clean → RED). The train clause was the whole
+S difference; the N bar is about fallback exploration, not submissions.
+
+## 10. Coefficient uncertainty (Tier 3)
+
+`physics.coefficient_stderr` / `FitResult.stderr`: asymptotic
+`sqrt(diag(s2·(JᵀJ)⁻¹))` from the winning shooting Jacobian (pseudo-
+inverse; degenerate → nan, reported not hidden). Method rationale in
+`docs/maths.md` §8. Tests in `tests/test_uncertainty.py` (noisy-
+synthetic coverage + clean-sanity + bad-shape-nan).
+
+| Fit | Point estimate | ±2σ | Truth in ±2σ? |
+|---|---|---|---|
+| Synthetic toss g | -9.809999947 | ±0.000000017 | just outside (~6σ at the 8th decimal; integrator floor, see §8 caveat) |
+| Synthetic toss drag | -0.350000005 | ±0.000000003 | just outside (~3σ at the 8th decimal; same caveat) |
+| ball8 g (px/s²) | -462.732 | ±18.27 | n/a (no ground truth; sign/magnitude usable, ±4%) |
+| ball8 drag (1/px) | -0.0005892 | ±0.0000718 | n/a (interval excludes 0; drag sign firm, ±6%) |
+| Duffing stiffness k | -21.99999990 | ±0.00000002 | same integrator-floor note as synthetic toss |
+| Duffing damping c | -0.25000000 | ±0.0000000004 | same |
+| Duffing cubic β | -6.00000020 | ±0.00000013 | same |
+
+The real-clip bands are usefully tight (drag sign firm at ±6%), not
+uselessly wide — reported, not dropped. Noiseless-fit bands sit at
+the integrator floor; coverage is validated with fixed-seed noise,
+where truth sits comfortably inside (test).

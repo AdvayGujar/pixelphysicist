@@ -114,6 +114,10 @@ def run_condition(name: str, repeats: int, effort: str, prefix: str,
                     result = S.run_loop(tools, S.default_chat_fn(effort),
                                         system_prompt=S.V2_SYSTEM_PROMPT,
                                         schemas=S.v2_schemas())
+                elif guard == "v3":
+                    result = S.run_loop(tools, S.default_chat_fn(effort),
+                                        system_prompt=S.V3_SYSTEM_PROMPT,
+                                        schemas=S.v3_schemas())
                 else:
                     result = S.run_loop(tools, S.default_chat_fn(effort))
                 attempt_error = ""
@@ -221,8 +225,9 @@ def main(argv: list[str] | None = None) -> int:
                         help="override repeats for N (default: --repeats)")
     parser.add_argument("--repeats-s", type=int, default=None,
                         help="override repeats for S (default: --repeats)")
-    parser.add_argument("--guard", default="v1", choices=("v1", "v2"),
-                        help="submit-guard version (v2 = audit B6 AND-rule)")
+    parser.add_argument("--guard", default="v1", choices=("v1", "v2", "v3"),
+                        help="submit-guard version (v2 = audit B6 AND-rule, "
+                             "v3 = held AND BIC without train)")
     parser.add_argument("--effort", default=EFFORT)
     parser.add_argument("--conditions", default="H,N,S")
     parser.add_argument("--out-csv", default="results/ablation.csv")

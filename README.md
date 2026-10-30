@@ -2,40 +2,19 @@
 
 *Built for the Meta Global AI Developer Hackathon (Push the Frontier track).*
 
-## The problem
+Film a moving object with a phone, and the program figures out the equation behind its motion — then proves it by predicting movement the fit never saw.
 
-Drop a ball, toss a tennis ball, let a spring bounce — the motion follows a
-simple mathematical rule (an equation). Normally, finding that rule from a
-video takes a human with measuring tools, spreadsheets, and time.
+SAM 3.1 tracks the object into a position curve; classical code fits a textbook equation; Muse Spark reads the residual errors, proposes the missing physics, and the refit must beat the textbook on held-out footage or it doesn't ship.
 
-**Can a computer watch a short phone video and figure out the rule by
-itself — then prove it got the right rule by predicting motion it has
-never seen?**
+![Synthetic toss: the program finds the hidden air-resistance term](docs/figures/synthetic_drag.png)
 
-That is what this project does.
+Hard results, all numbers pinned in [docs/results.md](docs/results.md):
 
-## The solution, in plain words
+- Synthetic ground truth: exact drag recovery in 5/5 Spark runs in both drag modes (one-coordinate toss and two-coordinate projectile; held error ~1e-9 / ~2e-7).
+- Public falling-ball footage: drag beats plain gravity ~7× on held-out motion (0.0356 → 0.0049).
+- Public pendulum footage (5 clips): fitted physics matches the measured swing period to <1% (0.3–0.7%).
 
-1. **Watch.** You give the program a short video of one moving object.
-   Meta's **SAM 3.1** model finds the object in every frame and follows it,
-   turning the video into a list of positions over time. (If SAM can't find
-   it, two built-in backup trackers try instead.)
-2. **Try the obvious explanation first.** The program fits a simple
-   "textbook" equation to the first part of the motion.
-3. **Check where it goes wrong.** It then predicts the rest of the motion —
-   the part it wasn't allowed to fit — and draws where the prediction
-   drifts away from reality.
-4. **Ask the scientist.** Meta's **Muse Spark** model looks at those
-   error pictures, works out what physics is missing ("the error grows
-   with speed — that looks like air resistance"), and suggests a better
-   equation.
-5. **Prove it.** The new equation is only accepted if it predicts the
-   unseen part of the motion better than the simple one did. Guessing
-   doesn't count; the held-back footage is the judge.
-
-The heavy maths (actually fitting numbers) is done by ordinary classical
-code. Spark's job is the creative step a spreadsheet can't do: deciding
-*what kind of physics* is missing.
+Honest limit up front: on short real throws plain gravity still wins, and the program reports that instead of inventing drag.
 
 ## See it work
 
@@ -46,11 +25,6 @@ code. Spark's job is the creative step a spreadsheet can't do: deciding
 **Step 3–5: the discovered equation, drawn against reality.** The dashed
 part is motion the fit never saw. The equation is written on the graph
 itself, with the score for each model:
-
-![Synthetic toss: the program finds the hidden air-resistance term](docs/figures/synthetic_drag.png)
-
-On this made-up test clip (where we know the true answer), the program
-recovers the hidden air-resistance value almost exactly.
 
 ![Hero toss from a real phone video](docs/figures/equation_hero.png)
 
@@ -75,11 +49,14 @@ equation, not by the original video frames):
 | A ball rolling up and down a slope | Rolling friction (the kind that always slows you down, whichever way you roll) | Found it on the test clip |
 
 The same system was also tried on **other people's footage** (a public
-physics-video dataset). It worked end-to-end there too: on two
-falling-ball clips it discovered the air-resistance equation by itself
-(beating plain gravity by ~7×), on a projectile clip it correctly
-concluded plain gravity was enough, and on five pendulum clips its
-fitted physics matched the measured swing period to within 1%
+physics-video dataset, MIT licence). On two falling-ball clips the drag
+equation predicts held-out motion ~7× better than plain gravity (0.0356 →
+0.0049); on a 38-frame projectile arc the coupled-drag fit beats gravity
+(0.065 → 0.041) but the loop declines to submit it, and a 21-frame arc
+submits linear drag that loses to gravity — short arcs are a stated
+limit. A one-direction roll ties the constant-only control, the 31 s
+spring clip fails outright as documented, and on five pendulum clips the
+fitted physics matches the measured swing period to within 1%
 ([details](docs/results.md)).
 
 ## Does the "scientist" step actually help? (the honest results)

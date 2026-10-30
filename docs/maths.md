@@ -162,3 +162,27 @@ second toss) while the `q*v` distractor does not (0.004 → 0.349).
   On the real hero it beats the drag model (0.065 vs 0.187) -- that is the
   reported result, not hidden. A submission must beat the baseline, and the
   transcript must not claim more than the evidence supports.
+
+## 8. Uncertainty on coefficients
+
+Winning fits report `±2σ` intervals from the shooting Jacobian
+(`physics.coefficient_stderr`, stored on `FitResult.stderr`).
+
+Method choice: Jacobian-based asymptotic covariance, not residual
+bootstrap. A bootstrap would refit the shooter dozens of times per
+clip -- minutes each on long windows against the 60 s fit budget --
+while the least-squares Jacobian at the optimum is already in hand:
+`cov = s2 * (J^T J)^-1` with `s2 = RSS/dof` (`RSS = 2*cost`), standard
+errors from `sqrt(diag(cov))`, pseudo-inverse so rank-deficient
+(aliasing) cases come back as inf/nan instead of raising.
+
+Caveats, read before quoting an interval: the formula assumes iid
+Gaussian residuals and a correctly specified model, so under tracking
+noise or model misspecification it underestimates -- treat the band as
+a lower bound on real uncertainty. On noiseless synthetic data the
+residuals sit at the integrator floor (`RSS ~ 1e-19`), so the band
+collapses to the 8th decimal and cannot see integrator bias a few
+σ away; the coverage test therefore uses the same toss with
+fixed-seed noise (`tests/test_uncertainty.py`), where truth sits
+comfortably inside `±2σ`. Wide bands on real clips are reported as
+wide, not dropped.

@@ -1,0 +1,432 @@
+{
+ "date": "2026-10-31",
+ "effort": "low",
+ "repeats": 3,
+ "repeats_by_condition": {
+  "H": 3,
+  "N": 5,
+  "S": 5
+ },
+ "guard": "v3",
+ "horizon": "min(2 s, clean tail)",
+ "loop_fit_budget_s": 15.0,
+ "screen_budget_s": 5.0,
+ "max_fit_calls": 8,
+ "total_cost_usd": 0.316988,
+ "crashed": "",
+ "gates": {
+  "H": {
+   "a_held": 0.732430311284895,
+   "b_mean": 0.18722568468499037,
+   "improvement": 0.7443774761908171,
+   "n_beat": "3/3",
+   "gate": "GREEN"
+  },
+  "N": {
+   "a_held": 0.041287940844683235,
+   "b_mean": 0.0371763063248367,
+   "rel_gap": 0.09958439282098525,
+   "n_clean": "0/5",
+   "gate": "RED"
+  },
+  "S": {
+   "a_held": 0.06255632091676147,
+   "b_mean": 0.008446170268754407,
+   "n_correct": "5/5",
+   "gate": "GREEN"
+  }
+ },
+ "g5": "RED",
+ "rows": [
+  {
+   "clip": "H",
+   "repeat": 0,
+   "mode": "A",
+   "submitted": true,
+   "terms": [
+    "1",
+    "q",
+    "v",
+    "v**2"
+   ],
+   "coeffs": [
+    168395.555858116,
+    -368.86089861514347,
+    -0.7450739062176595,
+    -0.012989424214683569
+   ],
+   "held_nrmse": 0.732430311284895,
+   "bic": 18.583443154387613,
+   "train_rmse": 1.1654222514964419,
+   "rounds": 0,
+   "cost_usd": 0.0,
+   "stopped": "baseline (condition A)",
+   "explanation": "baseline library [1, q, v, v**2], no Spark",
+   "baseline_held_nrmse": 0.732430311284895,
+   "baseline_bic": 18.583443154387613
+  },
+  {
+   "clip": "H",
+   "repeat": 1,
+   "mode": "B",
+   "submitted": false,
+   "terms": [
+    "1",
+    "abs(v)*v"
+   ],
+   "coeffs": [
+    -13547.521897389084,
+    0.00035598572622725597
+   ],
+   "held_nrmse": 0.18722568468499037,
+   "bic": 39.34418053821787,
+   "train_rmse": 3.4048120759479583,
+   "rounds": 4,
+   "cost_usd": 0.024861,
+   "stopped": "held-out NRMSE improved < 2% for 2 rounds; submitted best-so-far model as fallback",
+   "explanation": "loop ended without submit_model; best model by held-out NRMSE",
+   "baseline_held_nrmse": 0.732430311284895,
+   "baseline_bic": 18.583443154387613
+  },
+  {
+   "clip": "H",
+   "repeat": 2,
+   "mode": "B",
+   "submitted": false,
+   "terms": [
+    "1",
+    "abs(v)*v"
+   ],
+   "coeffs": [
+    -13547.521897389084,
+    0.00035598572622725597
+   ],
+   "held_nrmse": 0.18722568468499037,
+   "bic": 39.34418053821787,
+   "train_rmse": 3.4048120759479583,
+   "rounds": 4,
+   "cost_usd": 0.026537,
+   "stopped": "held-out NRMSE improved < 2% for 2 rounds; submitted best-so-far model as fallback",
+   "explanation": "loop ended without submit_model; best model by held-out NRMSE",
+   "baseline_held_nrmse": 0.732430311284895,
+   "baseline_bic": 18.583443154387613
+  },
+  {
+   "clip": "H",
+   "repeat": 3,
+   "mode": "B",
+   "submitted": false,
+   "terms": [
+    "1",
+    "abs(v)*v"
+   ],
+   "coeffs": [
+    -13547.521897389084,
+    0.00035598572622725597
+   ],
+   "held_nrmse": 0.18722568468499037,
+   "bic": 39.34418053821787,
+   "train_rmse": 3.4048120759479583,
+   "rounds": 4,
+   "cost_usd": 0.027664,
+   "stopped": "held-out NRMSE improved < 2% for 2 rounds; submitted best-so-far model as fallback",
+   "explanation": "loop ended without submit_model; best model by held-out NRMSE",
+   "baseline_held_nrmse": 0.732430311284895,
+   "baseline_bic": 18.583443154387613
+  },
+  {
+   "clip": "N",
+   "repeat": 0,
+   "mode": "A",
+   "submitted": true,
+   "terms": [
+    "1",
+    "q",
+    "v",
+    "v**2"
+   ],
+   "coeffs": [
+    369.37387691478676,
+    -11.510255732074016,
+    0.014807628090132587,
+    -0.0005679382499718246
+   ],
+   "held_nrmse": 0.041287940844683235,
+   "bic": 645.7797087872859,
+   "train_rmse": 10.913529236878052,
+   "rounds": 0,
+   "cost_usd": 0.0,
+   "stopped": "baseline (condition A)",
+   "explanation": "baseline library [1, q, v, v**2], no Spark",
+   "baseline_held_nrmse": 0.041287940844683235,
+   "baseline_bic": 645.7797087872859
+  },
+  {
+   "clip": "N",
+   "repeat": 1,
+   "mode": "B",
+   "submitted": false,
+   "terms": [
+    "1",
+    "q",
+    "abs(v)*v"
+   ],
+   "coeffs": [
+    20.94074786072251,
+    -11.373413818704277,
+    -7.813657894151783e-06
+   ],
+   "held_nrmse": 0.03719085639336166,
+   "bic": 684.2655933560571,
+   "train_rmse": 12.910098200475757,
+   "rounds": 6,
+   "cost_usd": 0.042549,
+   "stopped": "held-out NRMSE improved < 2% for 2 rounds; submitted best-so-far model as fallback",
+   "explanation": "loop ended without submit_model; best model by held-out NRMSE",
+   "baseline_held_nrmse": 0.041287940844683235,
+   "baseline_bic": 645.7797087872859
+  },
+  {
+   "clip": "N",
+   "repeat": 2,
+   "mode": "B",
+   "submitted": false,
+   "terms": [
+    "1",
+    "q",
+    "v"
+   ],
+   "coeffs": [
+    21.52491698847974,
+    -11.373648867249264,
+    -0.0075139690524964305
+   ],
+   "held_nrmse": 0.03717442680978631,
+   "bic": 684.2633746871483,
+   "train_rmse": 12.909987180668274,
+   "rounds": 5,
+   "cost_usd": 0.031692,
+   "stopped": "held-out NRMSE improved < 2% for 2 rounds; submitted best-so-far model as fallback",
+   "explanation": "loop ended without submit_model; best model by held-out NRMSE",
+   "baseline_held_nrmse": 0.041287940844683235,
+   "baseline_bic": 645.7797087872859
+  },
+  {
+   "clip": "N",
+   "repeat": 3,
+   "mode": "B",
+   "submitted": false,
+   "terms": [
+    "1",
+    "q",
+    "v"
+   ],
+   "coeffs": [
+    21.52491698847974,
+    -11.373648867249264,
+    -0.0075139690524964305
+   ],
+   "held_nrmse": 0.03717442680978631,
+   "bic": 684.2633746871483,
+   "train_rmse": 12.909987180668274,
+   "rounds": 5,
+   "cost_usd": 0.035029,
+   "stopped": "held-out NRMSE improved < 2% for 2 rounds; submitted best-so-far model as fallback",
+   "explanation": "loop ended without submit_model; best model by held-out NRMSE",
+   "baseline_held_nrmse": 0.041287940844683235,
+   "baseline_bic": 645.7797087872859
+  },
+  {
+   "clip": "N",
+   "repeat": 4,
+   "mode": "B",
+   "submitted": false,
+   "terms": [
+    "1",
+    "q",
+    "v"
+   ],
+   "coeffs": [
+    21.52491698847974,
+    -11.373648867249264,
+    -0.0075139690524964305
+   ],
+   "held_nrmse": 0.03717442680978631,
+   "bic": 684.2633746871483,
+   "train_rmse": 12.909987180668274,
+   "rounds": 5,
+   "cost_usd": 0.035912,
+   "stopped": "held-out NRMSE improved < 2% for 2 rounds; submitted best-so-far model as fallback",
+   "explanation": "loop ended without submit_model; best model by held-out NRMSE",
+   "baseline_held_nrmse": 0.041287940844683235,
+   "baseline_bic": 645.7797087872859
+  },
+  {
+   "clip": "N",
+   "repeat": 5,
+   "mode": "B",
+   "submitted": false,
+   "terms": [
+    "1",
+    "q",
+    "v**3"
+   ],
+   "coeffs": [
+    21.54368072498359,
+    -11.373576152783798,
+    -8.092900989974167e-09
+   ],
+   "held_nrmse": 0.03716739480146291,
+   "bic": 684.2619077738302,
+   "train_rmse": 12.90991377842683,
+   "rounds": 5,
+   "cost_usd": 0.034225,
+   "stopped": "held-out NRMSE improved < 2% for 2 rounds; submitted best-so-far model as fallback",
+   "explanation": "loop ended without submit_model; best model by held-out NRMSE",
+   "baseline_held_nrmse": 0.041287940844683235,
+   "baseline_bic": 645.7797087872859
+  },
+  {
+   "clip": "S",
+   "repeat": 0,
+   "mode": "A",
+   "submitted": true,
+   "terms": [
+    "1",
+    "q",
+    "v",
+    "v**2"
+   ],
+   "coeffs": [
+    -294.2800158693488,
+    -7.138186084667597,
+    -0.3574560040483483,
+    -0.002265173932985934
+   ],
+   "held_nrmse": 0.06255632091676147,
+   "bic": -64.81377079853056,
+   "train_rmse": 0.10206849734359431,
+   "rounds": 0,
+   "cost_usd": 0.0,
+   "stopped": "baseline (condition A)",
+   "explanation": "baseline library [1, q, v, v**2], no Spark",
+   "baseline_held_nrmse": 0.06255632091676147,
+   "baseline_bic": -64.81377079853056
+  },
+  {
+   "clip": "S",
+   "repeat": 1,
+   "mode": "B",
+   "submitted": true,
+   "terms": [
+    "1",
+    "abs(v)*v"
+   ],
+   "coeffs": [
+    -2432.182434844915,
+    -0.0014591319552584258
+   ],
+   "held_nrmse": 0.008446170268754407,
+   "bic": -65.56312835270678,
+   "train_rmse": 0.11737862860001622,
+   "rounds": 2,
+   "cost_usd": 0.010262,
+   "stopped": "submitted",
+   "explanation": "Sparse quadratic drag model q'' = c0 + c1*abs(v)*v. Constant is gravity/buoyancy per unit mass, abs(v)*v coefficient is quadratic drag per unit mass (1/length) correctly opposing motion both directions, unlike unsigned v**2. Beats baseline by ~86% held NRMSE and on BIC.",
+   "baseline_held_nrmse": 0.06255632091676147,
+   "baseline_bic": -64.81377079853056
+  },
+  {
+   "clip": "S",
+   "repeat": 2,
+   "mode": "B",
+   "submitted": true,
+   "terms": [
+    "1",
+    "abs(v)*v"
+   ],
+   "coeffs": [
+    -2432.182434844915,
+    -0.0014591319552584258
+   ],
+   "held_nrmse": 0.008446170268754407,
+   "bic": -65.56312835270678,
+   "train_rmse": 0.11737862860001622,
+   "rounds": 2,
+   "cost_usd": 0.012087,
+   "stopped": "submitted",
+   "explanation": "Sparse quadratic-drag model: 1 is constant forcing per mass (gravity/bias), abs(v)*v is symmetric quadratic air drag per mass (1/length). Replacing unsigned v**2 fixes directionality. Beats baseline by 86% held NRMSE and on BIC (-65.56 vs -64.81).",
+   "baseline_held_nrmse": 0.06255632091676147,
+   "baseline_bic": -64.81377079853056
+  },
+  {
+   "clip": "S",
+   "repeat": 3,
+   "mode": "B",
+   "submitted": true,
+   "terms": [
+    "1",
+    "abs(v)*v"
+   ],
+   "coeffs": [
+    -2432.182434844915,
+    -0.0014591319552584258
+   ],
+   "held_nrmse": 0.008446170268754407,
+   "bic": -65.56312835270678,
+   "train_rmse": 0.11737862860001622,
+   "rounds": 2,
+   "cost_usd": 0.011499,
+   "stopped": "submitted",
+   "explanation": "Model q'' = c0 + cd*abs(v)*v: constant gravity plus signed quadratic drag opposing motion (coefficient = drag per unit mass in 1/length). Sparse replacement [1, abs(v)*v] beats baseline by ~86% held NRMSE and wins on BIC, showing unsigned v**2 cannot represent bidirectional drag while abs(v)*v can.",
+   "baseline_held_nrmse": 0.06255632091676147,
+   "baseline_bic": -64.81377079853056
+  },
+  {
+   "clip": "S",
+   "repeat": 4,
+   "mode": "B",
+   "submitted": true,
+   "terms": [
+    "1",
+    "abs(v)*v"
+   ],
+   "coeffs": [
+    -2432.182434844915,
+    -0.0014591319552584258
+   ],
+   "held_nrmse": 0.008446170268754407,
+   "bic": -65.56312835270678,
+   "train_rmse": 0.11737862860001622,
+   "rounds": 3,
+   "cost_usd": 0.015356,
+   "stopped": "submitted",
+   "explanation": "Sparse quadratic drag model q'' = c0 + c_drag*abs(v)*v. Constant is gravity/offset per unit mass, abs(v)*v coefficient is quadratic drag per unit mass (1/length). Replacing unsigned v**2 with signed drag beats baseline by ~86% held NRMSE and on BIC, so parsimonious physics wins.",
+   "baseline_held_nrmse": 0.06255632091676147,
+   "baseline_bic": -64.81377079853056
+  },
+  {
+   "clip": "S",
+   "repeat": 5,
+   "mode": "B",
+   "submitted": true,
+   "terms": [
+    "1",
+    "abs(v)*v"
+   ],
+   "coeffs": [
+    -2432.182434844915,
+    -0.0014591319552584258
+   ],
+   "held_nrmse": 0.008446170268754407,
+   "bic": -65.56312835270678,
+   "train_rmse": 0.11737862860001622,
+   "rounds": 2,
+   "cost_usd": 0.009315,
+   "stopped": "submitted",
+   "explanation": "Sparse model q'' = c0 + c_drag*abs(v)*v beats baseline by ~86% held-NRMSE and on BIC (-65.56 vs -64.81). Constant is gravity/bias acceleration, abs(v)*v coefficient is quadratic drag per unit mass (1/length) acting opposite velocity in both directions, unlike unsigned v**2. Parsimony wins; q/v terms not needed.",
+   "baseline_held_nrmse": 0.06255632091676147,
+   "baseline_bic": -64.81377079853056
+  }
+ ]
+}

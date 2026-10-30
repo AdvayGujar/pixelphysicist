@@ -1,0 +1,138 @@
+{
+ "date": "2026-10-31",
+ "tracker": "motion (SAM is the normal path on phone footage; motion is the offline fallback for dataset clips)",
+ "effort": "low",
+ "guard": "v1 (CLI default)",
+ "total_cost_usd": 0.104527,
+ "rows": [
+  {
+   "key": "proj_a",
+   "experiment": "projectile (Morpheus /tmp/stress/proj1)",
+   "mode": "projectile",
+   "tracker": "motion",
+   "source": "live CLI run",
+   "submitted": false,
+   "final_terms": [
+    "sqrt(vx**2+vy**2)*vx",
+    "|",
+    "1",
+    "sqrt(vx**2+vy**2)*vy"
+   ],
+   "final_held_nrmse": 0.040983265258900614,
+   "control_held_nrmse": 0.06493872738431318,
+   "baseline_held_nrmse": null,
+   "rounds": 4,
+   "cost_usd": 0.016716250000000002,
+   "error": null
+  },
+  {
+   "key": "proj_b",
+   "experiment": "projectile/video_5 (Morpheus)",
+   "mode": "projectile",
+   "tracker": "motion",
+   "source": "live CLI run",
+   "submitted": true,
+   "final_terms": [
+    "vx",
+    "|",
+    "1",
+    "vy"
+   ],
+   "final_held_nrmse": 0.5966609543900796,
+   "control_held_nrmse": 0.5321763891503452,
+   "baseline_held_nrmse": null,
+   "rounds": 5,
+   "cost_usd": 0.03366625,
+   "error": null
+  },
+  {
+   "key": "roll_orange",
+   "experiment": "rolling_orange (Morpheus /tmp/stress/roll0)",
+   "mode": "rolling",
+   "tracker": "motion",
+   "source": "live CLI run",
+   "submitted": false,
+   "final_terms": [
+    "1",
+    "sign(v)"
+   ],
+   "final_held_nrmse": 0.006880212647412867,
+   "control_held_nrmse": 0.006880232169345483,
+   "baseline_held_nrmse": 0.07651727218521275,
+   "rounds": 4,
+   "cost_usd": 0.0234915,
+   "error": null
+  },
+  {
+   "key": "spring_long",
+   "experiment": "spring/video_0 (Morpheus, 31 s)",
+   "mode": "spring",
+   "tracker": "motion",
+   "source": "live CLI run",
+   "submitted": true,
+   "final_terms": [
+    "q",
+    "v"
+   ],
+   "final_held_nrmse": 1.0116311365953485,
+   "control_held_nrmse": 0.46327599238850214,
+   "baseline_held_nrmse": null,
+   "rounds": 5,
+   "cost_usd": 0.0306535,
+   "error": null
+  },
+  {
+   "key": "ball5",
+   "experiment": "falling_ball/video_5_fps30",
+   "mode": "1d",
+   "tracker": "motion",
+   "submitted": null,
+   "final_terms": [
+    "1",
+    "abs(v)*v"
+   ],
+   "final_held_nrmse": 0.004927063885487741,
+   "control_held_nrmse": 0.03559489976504714,
+   "baseline_held_nrmse": 0.008344923320049139,
+   "rounds": null,
+   "cost_usd": 0.0,
+   "error": null,
+   "source": "cited from results/dataset_mining.json (offline score_candidate; live Spark runs in docs/results.md \u00a77 submitted non-drag variants under the v1 prompt and sparse drag under prompt v2)"
+  },
+  {
+   "key": "ball8",
+   "experiment": "falling_ball/video_8_fps30",
+   "mode": "1d",
+   "tracker": "motion",
+   "submitted": null,
+   "final_terms": [
+    "1",
+    "abs(v)*v"
+   ],
+   "final_held_nrmse": 0.003666150556292589,
+   "control_held_nrmse": 0.034319118996290664,
+   "baseline_held_nrmse": 0.009315324216663248,
+   "rounds": null,
+   "cost_usd": 0.0,
+   "error": null,
+   "source": "cited from results/dataset_mining.json (offline score_candidate; live Spark runs in docs/results.md \u00a77 submitted non-drag variants under the v1 prompt and sparse drag under prompt v2)"
+  },
+  {
+   "key": "pendulum_x5",
+   "experiment": "holonomic_pendulum/video_1-5 (Morpheus)",
+   "mode": "1d (angle-period consistency, not a Spark run)",
+   "tracker": "motion",
+   "submitted": null,
+   "final_terms": [
+    "sin(q) period check"
+   ],
+   "final_held_nrmse": null,
+   "control_held_nrmse": null,
+   "baseline_held_nrmse": null,
+   "rounds": null,
+   "cost_usd": 0.0,
+   "error": null,
+   "source": "cited from results/pendulum_consistency.json: 5/5 period agreement within 1% (pend_h1 0.34%, pend_h2 0.54%, pend_h3 0.44%, pend_h4 0.67%, pend_h5 0.43%)"
+  }
+ ]
+}

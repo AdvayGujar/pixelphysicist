@@ -87,6 +87,39 @@ class FitResult:
     v0: float
     cost: float = field(default=float("inf"))
     start_index: int = field(default=-1)
+    stderr: np.ndarray = field(default_factory=lambda: np.full(0, np.nan))
+
+
+def _param_stderr(jac: np.ndarray, cost: float) -> np.ndarray:
+    """Asymptotic parameter std from the least-squares Jacobian.
+
+    ``cov = s2 * (J^T J)^-1`` with ``s2 = RSS / dof`` (``RSS = 2*cost``).
+    Pseudo-inverse keeps rank-deficient (aliasing) cases finite as
+    inf/nan instead of raising; callers report those honestly.
+    """
+    jac_arr = np.asarray(jac, dtype=float)
+    if jac_arr.ndim != 2 or not np.all(np.isfinite(jac_arr)):
+        return np.full(jac_arr.shape[1] if jac_arr.ndim == 2 else 0, np.nan)
+    m, p = jac_arr.shape
+    dof = m - p
+    if dof <= 0 or not np.isfinite(cost):
+        return np.full(p, np.nan)
+    s2 = 2.0 * float(cost) / dof
+    try:
+        cov = s2 * np.linalg.pinv(jac_arr.T @ jac_arr)
+        diag = np.diag(cov)
+        return np.where(diag >= 0, np.sqrt(np.maximum(diag, 0.0)), np.nan)
+    except (np.linalg.LinAlgError, ValueError):
+        return np.full(p, np.nan)
+
+
+def coefficient_stderr(fit: FitResult) -> np.ndarray:
+    """Coefficient standard errors for a shooting fit (same order as terms)."""
+    err = np.asarray(getattr(fit, "stderr", np.full(0, np.nan)), dtype=float)
+    n = len(getattr(fit, "terms", []))
+    if err.shape != (n,):
+        return np.full(n, np.nan)
+    return err
 
 
 @dataclass
@@ -335,6 +368,7 @@ def fit_terms(terms: list[str], t: np.ndarray, q: np.ndarray,
 
     best: FitResult | None = None
     best_cost = float("inf")
+    best_stderr: np.ndarray = np.full(n_terms, np.nan)
     max_nfev = MAX_NFEV_PER_VAR * (n_terms + 2)
     try:
         for index, start in enumerate(starts):
@@ -348,10 +382,12 @@ def fit_terms(terms: list[str], t: np.ndarray, q: np.ndarray,
             if (result.success and np.all(np.isfinite(result.x))
                     and np.isfinite(result.cost) and result.cost < best_cost):
                 best_cost = result.cost
+                best_stderr = _param_stderr(result.jac, float(result.cost))[:n_terms]
                 best = FitResult(terms=clean, coeffs=result.x[:n_terms],
                                  q0=float(result.x[n_terms]),
                                  v0=float(result.x[n_terms + 1]),
-                                 cost=float(result.cost), start_index=index)
+                                 cost=float(result.cost), start_index=index,
+                                 stderr=np.asarray(best_stderr, dtype=float))
     except _BudgetExceeded as exc:
         raise RuntimeError(str(exc)) from None
     if best is None:

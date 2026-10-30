@@ -25,6 +25,9 @@ results/*.json
 !results/dataset_mining.json
 !results/pendulum_consistency.json
 !results/jointfit.json
+!results/benchmark.json
+!results/ablation_v3.json
+!results/ablation_v3.csv
 data/clips/*
 data/synthetic/*
 !data/clips/.gitkeep
