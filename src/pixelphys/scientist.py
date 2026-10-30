@@ -176,6 +176,22 @@ _V2_RULE = """- submit_model is rejected unless the model beats the baseline by 
 assert _V1_RULE in SYSTEM_PROMPT, "v1 submit rule drifted; fix _V1_RULE"
 V2_SYSTEM_PROMPT = SYSTEM_PROMPT.replace(_V1_RULE, _V2_RULE)
 
+# Guard v3 (pre-registered in docs/maths.md §5 and the Day-5 v2 write-up):
+# held-NRMSE AND BIC, dropping the train clause that misfired in v2 (the
+# overfit baseline owns the fit window, so sparse truth loses on train by
+# construction). Same exact-replacement versioning as v2.
+_V3_RULE = """- submit_model is rejected unless the model beats the baseline by at
+  least 2% held-out NRMSE AND on BIC. A held-out win that loses on BIC is
+  held-window luck, not physics: do not submit it; keep searching or
+  submit the baseline. Train RMSE is not part of this decision because the
+  overfit baseline owns the fit window. When a fitted model beats the
+  baseline on both, call submit_model promptly with the physical
+  explanation; do not delay submission for extra plots. If nothing beats
+  the baseline on both, submit the baseline itself and explain why the
+  baseline suffices."""
+assert _V1_RULE in SYSTEM_PROMPT, "v1 submit rule drifted; fix _V1_RULE"
+V3_SYSTEM_PROMPT = SYSTEM_PROMPT.replace(_V1_RULE, _V3_RULE)
+
 _V1_SUBMIT_DESC = ("Submit a fitted model as the final answer. "
                    "Rejected unless it beats the baseline by >= 2% "
                    "held-out NRMSE or on BIC (submitting the "
@@ -193,6 +209,20 @@ def v2_schemas() -> list[dict[str, Any]]:
         "Rejected unless it beats the baseline by >= 2% held-out NRMSE "
         "AND on BIC, with train RMSE within 5% of the baseline's "
         "(submitting the baseline itself is always accepted).")
+    return schemas
+
+
+def v3_schemas() -> list[dict[str, Any]]:
+    """Tool schemas with the v3 submit rule (held AND BIC, no train)."""
+    schemas = copy.deepcopy(TOOL_SCHEMAS)
+    assert schemas[2]["function"]["name"] == "submit_model"
+    assert schemas[2]["function"]["description"] == _V1_SUBMIT_DESC, \
+        "v1 submit description drifted; fix _V1_SUBMIT_DESC"
+    schemas[2]["function"]["description"] = (
+        "Submit a fitted model as the final answer. "
+        "Rejected unless it beats the baseline by >= 2% held-out NRMSE "
+        "AND on BIC (train RMSE is not part of the decision; "
+        "submitting the baseline itself is always accepted).")
     return schemas
 
 
@@ -314,8 +344,9 @@ class ScientistTools:
         self._fit_cache: dict[str, Any] = fit_cache if fit_cache is not None else {}
         # Audit B6: submit-guard version. "v1" is the Day-4/5 OR rule;
         # "v2" requires held-NRMSE AND BIC AND train-within-5%.
-        if guard not in ("v1", "v2"):
-            raise ValueError(f"guard must be 'v1' or 'v2', got {guard!r}")
+        # "v3" requires held-NRMSE AND BIC, dropping train (maths.md §5).
+        if guard not in ("v1", "v2", "v3"):
+            raise ValueError(f"guard must be 'v1', 'v2' or 'v3', got {guard!r}")
         self.guard = guard
         if baseline is None:
             # Audit A2: the runner precomputes condition A once and passes
@@ -471,6 +502,27 @@ class ScientistTools:
         plt.close(fig)
         return {"model_id": model_id, "versus": versus, "path": str(path)}
 
+    def _guard_reference(self):
+        """What a submission must beat: the baseline, or gravity-only.
+
+        Benchmark loophole (closed): when the baseline's own rollout
+        exploded, the old guard accepted ANY fitted model -- a model
+        worse than plain gravity was submitted on two Morpheus clips.
+        Gravity-only is the standing control, so it becomes the
+        reference; only if it also fails is there nothing to beat.
+        """
+        if self.baseline.ok:
+            return self.baseline, "baseline"
+        cached = getattr(self, "_gravity_reference", None)
+        if cached is None:
+            cached = P.score_candidate(["1"], self.t_fit, self.q_fit,
+                                       self.t_held, self.q_held,
+                                       budget_s=self.budget_s)
+            self._gravity_reference = cached
+        if cached.ok:
+            return cached, "gravity-only (baseline failed)"
+        return None, "none"
+
     def submit_model(self, model_id: str, explanation: str = "") -> dict[str, Any]:
         entry = self.models.get(model_id)
         if entry is None:
@@ -479,12 +531,23 @@ class ScientistTools:
         if not scored.ok:
             return {"accepted": False,
                     "error": f"model did not fit: {scored.error}"}
-        base = self.baseline
-        if model_id == self.baseline_id or not base.ok:
+        if model_id == self.baseline_id:
             self.submitted_id = model_id
             self.submit_explanation = explanation
             return {"accepted": True, "model_id": model_id,
                     "screening": False,
+                    "terms": scored.terms,
+                    "coeffs": [_num(c) for c in scored.coeffs],
+                    "held_nrmse": _num(scored.held_nrmse),
+                    "bic": _num(scored.bic),
+                    "train_rmse": _num(scored.train_rmse)}
+        base, reference_name = self._guard_reference()
+        if base is None:
+            self.submitted_id = model_id
+            self.submit_explanation = explanation
+            return {"accepted": True, "model_id": model_id,
+                    "screening": False,
+                    "reference": reference_name,
                     "terms": scored.terms,
                     "coeffs": [_num(c) for c in scored.coeffs],
                     "held_nrmse": _num(scored.held_nrmse),
@@ -506,7 +569,7 @@ class ScientistTools:
                         and scored.train_rmse <= 1.05 * base.train_rmse)
             if not (beats_nrmse and beats_bic and train_ok):
                 return {
-                    "accepted": False,
+                    "accepted": False, "reference": reference_name,
                     "error": "does not beat the baseline by >= 2% held-out "
                              "NRMSE AND on BIC with train RMSE within 5%",
                     "held_nrmse": _num(scored.held_nrmse),
@@ -516,9 +579,21 @@ class ScientistTools:
                     "train_rmse": _num(scored.train_rmse),
                     "baseline_train_rmse": _num(base.train_rmse),
                 }
+        elif self.guard == "v3":
+            if not (beats_nrmse and beats_bic):
+                return {
+                    "accepted": False, "reference": reference_name,
+                    "error": "does not beat the baseline by >= 2% held-out "
+                             "NRMSE AND on BIC (train RMSE is not part of "
+                             "the v3 decision)",
+                    "held_nrmse": _num(scored.held_nrmse),
+                    "baseline_held_nrmse": _num(base.held_nrmse),
+                    "bic": _num(scored.bic),
+                    "baseline_bic": _num(base.bic),
+                }
         elif not (beats_nrmse or beats_bic):
             return {
-                "accepted": False,
+                "accepted": False, "reference": reference_name,
                 "error": "does not beat the baseline by >= 2% held-out "
                          "NRMSE or on BIC",
                 "held_nrmse": _num(scored.held_nrmse),
@@ -790,6 +865,18 @@ class ProjectileTools:
             return {"accepted": False,
                     "error": f"model did not fit: {scored.error}"}
         base = self.baseline
+        reference_name = "baseline"
+        if model_id != self.baseline_id and not base.ok:
+            # Same loophole as the 1-DOF guard: an exploded baseline
+            # must not make every candidate submittable. Gravity-only
+            # (no horizontal force) is the standing control.
+            gravity = P.score_projectile(["0"], ["1"], self.t_fit,
+                                         self.x_fit, self.y_fit,
+                                         self.t_held, self.x_held,
+                                         self.y_held,
+                                         budget_s=self.budget_s)
+            if gravity.ok:
+                base, reference_name = gravity, "gravity-only (baseline failed)"
         if model_id != self.baseline_id and base.ok:
             beats_nrmse = scored.held_nrmse <= (1.0 - SUBMIT_IMPROVEMENT) * base.held_nrmse
             beats_bic = scored.bic < base.bic
@@ -797,6 +884,7 @@ class ProjectileTools:
                 return {"accepted": False,
                         "error": "does not beat the baseline by >= 2% "
                                  "held-out NRMSE or on BIC",
+                        "reference": reference_name,
                         "held_nrmse": _num(scored.held_nrmse),
                         "baseline_held_nrmse": _num(base.held_nrmse),
                         "bic": _num(scored.bic),

@@ -66,6 +66,36 @@ def test_submit_guard_rejects_worse_than_baseline(tmp_path) -> None:  # type: ig
     assert "baseline" in rejected["error"]
 
 
+def test_submit_guard_falls_back_to_gravity_when_baseline_explodes(
+        tmp_path) -> None:  # type: ignore[no-untyped-def]
+    """Benchmark loophole: a failed baseline must not accept anything.
+
+    With the baseline entry replaced by a failure, the guard compares
+    against gravity-only: a model that loses to gravity is rejected,
+    the drag model (which beats it) is accepted.
+    """
+    import numpy as np
+
+    from pixelphys import physics as P
+    from pixelphys import scientist as S
+
+    tools = make_tools(tmp_path)
+    failed = P.ScoredFit(ok=False, terms=list(P.BASELINE_TERMS),
+                         coeffs=np.full(4, np.nan), q0=float("nan"),
+                         v0=float("nan"), train_rmse=float("inf"),
+                         held_nrmse=float("inf"), bic=float("inf"),
+                         n_scored=0, cost=float("inf"), start_index=-1,
+                         error="rollout exploded")
+    tools.models[tools.baseline_id] = S._Entry(failed, "exploded", tight=True)
+    worse = tools.fit_model(["v**2"], "unsigned square only")
+    rejected = tools.submit_model(worse["model_id"], "trust me")
+    assert not rejected["accepted"]
+    assert rejected["reference"] == "gravity-only (baseline failed)"
+    drag = tools.fit_model(["1", "abs(v)*v"], "quadratic drag")
+    accepted = tools.submit_model(drag["model_id"], "drag beats gravity")
+    assert accepted["accepted"]
+
+
 def test_fit_model_returns_failure_as_data(tmp_path) -> None:  # type: ignore[no-untyped-def]
     tools = make_tools(tmp_path)
     bad = tools.fit_model(["q.__class__"], "injection attempt")
@@ -215,6 +245,46 @@ def test_submit_guard_v2_requires_all_three(tmp_path) -> None:  # type: ignore[n
     assert not tools_v2.submit_model(mid_v2, "x")["accepted"]
     tools_v1, mid_v1 = tools_with_fake("v1")
     assert tools_v1.submit_model(mid_v1, "x")["accepted"]
+
+
+def test_submit_guard_v3_drops_train_clause(tmp_path) -> None:  # type: ignore[no-untyped-def]
+    """Guard v3: held AND BIC decide; train RMSE is not consulted.
+
+    Accepts a model beating held+BIC while losing train by >5%, and
+    rejects one winning held but losing BIC.
+    """
+    from pixelphys import physics as P
+
+    t_fit, q_fit, t_held, q_held = synthetic_split()
+    tools = S.ScientistTools(t_fit, q_fit, t_held, q_held, tmp_path,
+                             guard="v3")
+    base = tools.baseline
+    assert base.ok
+    # Beats held (>=2%) and BIC, but loses train by 50%: v2 rejects, v3 accepts.
+    good = tools._register(P.ScoredFit(
+        ok=True, terms=["1", "abs(v)*v"],
+        coeffs=np.array([-9.81, -0.35]), q0=0.0, v0=6.0,
+        train_rmse=base.train_rmse * 1.5,
+        held_nrmse=base.held_nrmse * 0.5, bic=base.bic - 10.0,
+        n_scored=1, cost=0.0, start_index=0, error=None), "held+bic win")
+    assert tools.submit_model(good, "drag beats held and BIC")["accepted"]
+    # Wins held but loses BIC: v1 accepts (OR), v3 rejects (AND).
+    luck = tools._register(P.ScoredFit(
+        ok=True, terms=["1", "q", "v"],
+        coeffs=np.array([0.0, 1.0, 0.1]), q0=0.0, v0=0.0,
+        train_rmse=base.train_rmse,
+        held_nrmse=base.held_nrmse * 0.5, bic=base.bic + 10.0,
+        n_scored=1, cost=0.0, start_index=0, error=None), "held luck")
+    rejected = tools.submit_model(luck, "held luck")
+    assert not rejected["accepted"]
+    assert "BIC" in rejected["error"]
+
+
+def test_v3_prompt_matches_guard() -> None:
+    assert S._V3_RULE in S.V3_SYSTEM_PROMPT
+    assert S._V1_RULE not in S.V3_SYSTEM_PROMPT
+    assert "Train RMSE is not part of this decision" in S.V3_SYSTEM_PROMPT
+    assert "not part of the decision" in S.v3_schemas()[2]["function"]["description"]
 
 
 def test_loop_fit_call_cap(tmp_path) -> None:  # type: ignore[no-untyped-def]
