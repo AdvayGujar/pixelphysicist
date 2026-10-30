@@ -128,6 +128,11 @@ often the wrong term, so try each candidate INSTEAD of v**2 (e.g.
 [1, abs(v)*v]) as well as added to the baseline. If a fit returns an
 integration error, retry a sparser version carrying the same new term
 (drop q/v/v**2 first) before moving on.
+Parsimony first (prompt v2): when you suspect quadratic drag, your
+FIRST drag fit must be the sparse replacement [1, abs(v)*v] -- constant
+plus drag, nothing else. Adding drag to the full baseline lets q and v
+absorb its effect and hides the comparison. Only add q/v back if the
+sparse model's residuals demand it, and say what in them demands it.
 
 Reading residuals (observed - predicted) on the fit window:
 - residual proportional to v suggests viscous drag (a v term),

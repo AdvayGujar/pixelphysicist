@@ -1,0 +1,73 @@
+{
+ "method": "fit_terms_joint shared coeffs + per-clip ICs, residual concat, full tracked trajectories (30+35 pts). BIC=physics.bic(n_total,rss,k=len(terms)+2*n_clips (4 IC parameters for 2 clips)).",
+ "clips": [
+  "tests/fixtures/obs_synthetic_toss_drag.json (v0=6)",
+  "tests/fixtures/obs_synthetic_toss_drag_v0b.json (v0=7.5)"
+ ],
+ "single_clip_S1": {
+  "drag_held": 0.008446170268754407,
+  "drag_bic": -65.56312835270678,
+  "qv_held": 0.003968992294840736,
+  "qv_bic": -61.02901875971234,
+  "note": "qv wins single-clip held (aliasing), drag wins single-clip BIC"
+ },
+ "joint": {
+  "drag": {
+   "terms": [
+    "1",
+    "abs(v)*v"
+   ],
+   "coeffs": [
+    -2452.60129779623,
+    -0.0014113618784904027
+   ],
+   "ics": [
+    [
+     0.14067874680582435,
+     1503.1957933938936
+    ],
+    [
+     0.16616114614233804,
+     1881.2260672254397
+    ]
+   ],
+   "rss": 0.9511877834821838,
+   "n_total": 65,
+   "k": 6,
+   "joint_bic": -249.54169442607372,
+   "cost": 0.4755938917410919
+  },
+  "qv": {
+   "terms": [
+    "1",
+    "q",
+    "v",
+    "q*v"
+   ],
+   "coeffs": [
+    -2492.138031973022,
+    0.024688259818529172,
+    -1.3493522707603556,
+    0.0012167897152719667
+   ],
+   "ics": [
+    [
+     -0.8901687507470374,
+     1463.176711458882
+    ],
+    [
+     6.344565468450215,
+     1699.1084884599322
+    ]
+   ],
+   "rss": 163.51396628083887,
+   "n_total": 65,
+   "k": 8,
+   "joint_bic": 93.3583220948091,
+   "cost": 81.75698314041944
+  }
+ },
+ "winner": "drag",
+ "ablation_mapping": "drag=ablation.csv S r2 [1,abs(v)*v]; qv=ablation.csv S r1/r3 [1,q,v,q*v]; joint refit above uses same structures on S take-1+take-2 pair",
+ "verdict": "drag survives joint fitting"
+}

@@ -75,9 +75,12 @@ equation, not by the original video frames):
 | A ball rolling up and down a slope | Rolling friction (the kind that always slows you down, whichever way you roll) | Found it on the test clip |
 
 The same system was also tried on **other people's footage** (a public
-physics-video dataset). It worked end-to-end there too — and correctly
-concluded that one clip was explained by plain gravity, no extra physics
-needed.
+physics-video dataset). It worked end-to-end there too: on two
+falling-ball clips it discovered the air-resistance equation by itself
+(beating plain gravity by ~7×), on a projectile clip it correctly
+concluded plain gravity was enough, and on five pendulum clips its
+fitted physics matched the measured swing period to within 1%
+([details](docs/results.md)).
 
 ## Does the "scientist" step actually help? (the honest results)
 

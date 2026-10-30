@@ -1,0 +1,473 @@
+{
+ "criterion": "drag held-NRMSE <=0.8*gravity AND drag<baseline, with drag coeff<0 (pre-registered, unchanged)",
+ "models": {
+  "baseline": [
+   "1",
+   "q",
+   "v",
+   "v**2"
+  ],
+  "gravity": [
+   "1"
+  ],
+  "drag": [
+   "1",
+   "abs(v)*v"
+  ]
+ },
+ "split": "60/40 standard, horizon min(2s,tail)",
+ "coordinate": "1-DOF vertical_q (up-positive px), no trim/scale, motion tracker",
+ "clips": {
+  "tape0": {
+   "experiment": "falling_tape/video_0_fps30",
+   "local": "/tmp/stress2/tape0.mp4",
+   "n": 27,
+   "n_fit": 16,
+   "q_span_px": 574.4940016189072,
+   "scores": {
+    "baseline": {
+     "ok": false,
+     "held_nrmse": null,
+     "bic": null,
+     "train_rmse": null,
+     "coeffs": [],
+     "n_scored": 0,
+     "error": "RuntimeError: integration failed for terms ['1', 'q', 'v', 'v**2']"
+    },
+    "gravity": {
+     "ok": true,
+     "held_nrmse": 0.1573096169610828,
+     "bic": 51.63927553563735,
+     "train_rmse": 3.872100666975374,
+     "coeffs": [
+      -1148.088776494456
+     ],
+     "n_scored": 11,
+     "error": null
+    },
+    "drag": {
+     "ok": true,
+     "held_nrmse": 0.0980087396174026,
+     "bic": 35.3498587273064,
+     "train_rmse": 2.1342376172029494,
+     "coeffs": [
+      -3302.2312395122267,
+      -0.006288158267902599
+     ],
+     "n_scored": 11,
+     "error": null
+    }
+   },
+   "winner": false
+  },
+  "tape1": {
+   "experiment": "falling_tape/video_1_fps30",
+   "local": "/tmp/stress2/tape1.mp4",
+   "n": 32,
+   "n_fit": 19,
+   "q_span_px": 547.6330708502383,
+   "scores": {
+    "baseline": {
+     "ok": false,
+     "held_nrmse": null,
+     "bic": null,
+     "train_rmse": null,
+     "coeffs": [],
+     "n_scored": 0,
+     "error": "RuntimeError: integration failed for terms ['1', 'q', 'v', 'v**2']"
+    },
+    "gravity": {
+     "ok": true,
+     "held_nrmse": 1.0733692379485202,
+     "bic": 118.57199140108023,
+     "train_rmse": 17.954842474773677,
+     "coeffs": [
+      -1085.8541706884903
+     ],
+     "n_scored": 13,
+     "error": null
+    },
+    "drag": {
+     "ok": true,
+     "held_nrmse": 0.43327937428641794,
+     "bic": 100.67619176643646,
+     "train_rmse": 10.375347114354897,
+     "coeffs": [
+      -7900.562809161318,
+      -0.013050994853483813
+     ],
+     "n_scored": 13,
+     "error": null
+    }
+   },
+   "winner": false
+  },
+  "tape2": {
+   "experiment": "falling_tape/video_2_fps30",
+   "local": "/tmp/stress2/tape2.mp4",
+   "n": 33,
+   "n_fit": 19,
+   "q_span_px": 438.02219983385226,
+   "scores": {
+    "baseline": {
+     "ok": true,
+     "held_nrmse": 1.8653923131048842,
+     "bic": 102.00370977316227,
+     "train_rmse": 9.201778072787144,
+     "coeffs": [
+      18786.636681973858,
+      63.99113732078235,
+      65.09346567042033,
+      0.06726346762733501
+     ],
+     "n_scored": 14,
+     "error": null
+    },
+    "gravity": {
+     "ok": true,
+     "held_nrmse": 2.103857395410927,
+     "bic": 103.25387898794968,
+     "train_rmse": 11.998139941597003,
+     "coeffs": [
+      -1573.0506467592945
+     ],
+     "n_scored": 14,
+     "error": null
+    },
+    "drag": {
+     "ok": false,
+     "held_nrmse": null,
+     "bic": null,
+     "train_rmse": null,
+     "coeffs": [],
+     "n_scored": 0,
+     "error": "RuntimeError: integration failed for terms ['1', 'abs(v)*v']"
+    }
+   },
+   "winner": false
+  },
+  "marker0": {
+   "experiment": "falling_marker/video_0_fps30",
+   "local": "/tmp/stress2/marker0.mp4",
+   "n": 29,
+   "n_fit": 17,
+   "q_span_px": 337.0232346762845,
+   "scores": {
+    "baseline": {
+     "ok": false,
+     "held_nrmse": null,
+     "bic": null,
+     "train_rmse": null,
+     "coeffs": [],
+     "n_scored": 0,
+     "error": "RuntimeError: integration failed for terms ['1', 'q', 'v', 'v**2']"
+    },
+    "gravity": {
+     "ok": true,
+     "held_nrmse": 20.577861933423133,
+     "bic": 137.84623326799078,
+     "train_rmse": 44.89433267610363,
+     "coeffs": [
+      3168.1090516483305
+     ],
+     "n_scored": 12,
+     "error": null
+    },
+    "drag": {
+     "ok": true,
+     "held_nrmse": 12.849566554127714,
+     "bic": 138.79563189261523,
+     "train_rmse": 42.47455753700463,
+     "coeffs": [
+      5976.100634027472,
+      -0.003760952148401864
+     ],
+     "n_scored": 12,
+     "error": null
+    }
+   },
+   "winner": false
+  },
+  "marker1": {
+   "experiment": "falling_marker/video_1_fps30",
+   "local": "/tmp/stress2/marker1.mp4",
+   "n": 28,
+   "n_fit": 16,
+   "q_span_px": 391.034369562594,
+   "scores": {
+    "baseline": {
+     "ok": false,
+     "held_nrmse": null,
+     "bic": null,
+     "train_rmse": null,
+     "coeffs": [],
+     "n_scored": 0,
+     "error": "RuntimeError: integration failed for terms ['1', 'q', 'v', 'v**2']"
+    },
+    "gravity": {
+     "ok": true,
+     "held_nrmse": 60.042360321013604,
+     "bic": 142.95159060708386,
+     "train_rmse": 67.1753935969326,
+     "coeffs": [
+      2482.393183072798
+     ],
+     "n_scored": 12,
+     "error": null
+    },
+    "drag": {
+     "ok": true,
+     "held_nrmse": 41.59782601909442,
+     "bic": 143.24844821929318,
+     "train_rmse": 62.17421827139421,
+     "coeffs": [
+      9513.849639444243,
+      -0.007458033307611595
+     ],
+     "n_scored": 12,
+     "error": null
+    }
+   },
+   "winner": false
+  },
+  "marker2": {
+   "experiment": "falling_marker/video_2_fps30",
+   "local": "/tmp/stress2/marker2.mp4",
+   "n": 28,
+   "n_fit": 16,
+   "q_span_px": 75.42689266890432,
+   "scores": {
+    "baseline": {
+     "ok": false,
+     "held_nrmse": null,
+     "bic": null,
+     "train_rmse": null,
+     "coeffs": [],
+     "n_scored": 0,
+     "error": "RuntimeError: integration failed for terms ['1', 'q', 'v', 'v**2']"
+    },
+    "gravity": {
+     "ok": true,
+     "held_nrmse": 15.629517783537823,
+     "bic": 64.91087088941032,
+     "train_rmse": 5.8622560594839275,
+     "coeffs": [
+      266.6766999121735
+     ],
+     "n_scored": 12,
+     "error": null
+    },
+    "drag": {
+     "ok": true,
+     "held_nrmse": 10.941007062738564,
+     "bic": 53.884648520338224,
+     "train_rmse": 3.808828554994579,
+     "coeffs": [
+      3729.0770740194107,
+      -0.10903444591172912
+     ],
+     "n_scored": 12,
+     "error": null
+    }
+   },
+   "winner": false
+  },
+  "ball0": {
+   "experiment": "falling_ball/video_0_fps30",
+   "local": "/tmp/stress2/ball0.mp4",
+   "n": 42,
+   "n_fit": 25,
+   "q_span_px": 764.5617303545031,
+   "scores": {
+    "baseline": {
+     "ok": true,
+     "held_nrmse": 0.00557548231337142,
+     "bic": -112.40867979940853,
+     "train_rmse": 0.07175923692682036,
+     "coeffs": [
+      1739.219932479032,
+      4.894275062891443,
+      13.519174162410936,
+      0.022251039824500177
+     ],
+     "n_scored": 17,
+     "error": null
+    },
+    "gravity": {
+     "ok": true,
+     "held_nrmse": 0.03593559366034943,
+     "bic": -45.59827704921976,
+     "train_rmse": 0.33117839520208486,
+     "coeffs": [
+      -306.401507467921
+     ],
+     "n_scored": 17,
+     "error": null
+    },
+    "drag": {
+     "ok": true,
+     "held_nrmse": 0.005971084100099659,
+     "bic": -90.68150019368171,
+     "train_rmse": 0.12604200307258243,
+     "coeffs": [
+      -444.9312854924111,
+      -0.0005580659001424561
+     ],
+     "n_scored": 17,
+     "error": null
+    }
+   },
+   "winner": false
+  },
+  "ball5": {
+   "experiment": "falling_ball/video_5_fps30",
+   "local": "/tmp/stress2/ball5.mp4",
+   "n": 43,
+   "n_fit": 25,
+   "q_span_px": 775.884548050428,
+   "scores": {
+    "baseline": {
+     "ok": true,
+     "held_nrmse": 0.008344923320049139,
+     "bic": -131.54846298644156,
+     "train_rmse": 0.048936371833233634,
+     "coeffs": [
+      3082.048574997935,
+      14.030863128066246,
+      27.938190501382888,
+      0.0527923620372339
+     ],
+     "n_scored": 18,
+     "error": null
+    },
+    "gravity": {
+     "ok": true,
+     "held_nrmse": 0.03559489976504714,
+     "bic": -43.76362205305344,
+     "train_rmse": 0.34355605579269466,
+     "coeffs": [
+      -301.9090833244469
+     ],
+     "n_scored": 18,
+     "error": null
+    },
+    "drag": {
+     "ok": true,
+     "held_nrmse": 0.004927063885487741,
+     "bic": -101.18135397068866,
+     "train_rmse": 0.10216796080682478,
+     "coeffs": [
+      -450.96236108922943,
+      -0.0006202239982480519
+     ],
+     "n_scored": 18,
+     "error": null
+    }
+   },
+   "winner": true
+  },
+  "ball8": {
+   "experiment": "falling_ball/video_8_fps30",
+   "local": "/tmp/stress2/ball8.mp4",
+   "n": 41,
+   "n_fit": 24,
+   "q_span_px": 757.3105606828915,
+   "scores": {
+    "baseline": {
+     "ok": true,
+     "held_nrmse": 0.009315324216663248,
+     "bic": -127.71308922601456,
+     "train_rmse": 0.0469840974023082,
+     "coeffs": [
+      2513.004312763272,
+      14.584757640724531,
+      25.92480389769041,
+      0.05000072631139251
+     ],
+     "n_scored": 17,
+     "error": null
+    },
+    "gravity": {
+     "ok": true,
+     "held_nrmse": 0.034319118996290664,
+     "bic": -47.62370212999142,
+     "train_rmse": 0.303981381220041,
+     "coeffs": [
+      -313.337902633225
+     ],
+     "n_scored": 17,
+     "error": null
+    },
+    "drag": {
+     "ok": true,
+     "held_nrmse": 0.003666150556292589,
+     "bic": -108.81942731517124,
+     "train_rmse": 0.07950707865540158,
+     "coeffs": [
+      -462.7321275755624,
+      -0.0005892416426952394
+     ],
+     "n_scored": 17,
+     "error": null
+    }
+   },
+   "winner": true
+  },
+  "proj5": {
+   "experiment": "projectile/video_5_fps30_cropped",
+   "local": "/tmp/stress2/proj5.mp4",
+   "n": 21,
+   "n_fit": 12,
+   "q_span_px": 461.7348508465302,
+   "scores": {
+    "baseline": {
+     "ok": true,
+     "held_nrmse": 0.44796494711683654,
+     "bic": 48.70046735987329,
+     "train_rmse": 4.087606036538633,
+     "coeffs": [
+      65146.2914160501,
+      -145.48931704895975,
+      -75.81489917662888,
+      0.02982150943565987
+     ],
+     "n_scored": 9,
+     "error": null
+    },
+    "gravity": {
+     "ok": true,
+     "held_nrmse": 0.9991542736145086,
+     "bic": 88.25991890245649,
+     "train_rmse": 28.98803879945379,
+     "coeffs": [
+      -1314.6488557586415
+     ],
+     "n_scored": 9,
+     "error": null
+    },
+    "drag": {
+     "ok": false,
+     "held_nrmse": null,
+     "bic": null,
+     "train_rmse": null,
+     "coeffs": [],
+     "n_scored": 0,
+     "error": "RuntimeError: integration failed for terms ['1', 'abs(v)*v']"
+    }
+   },
+   "winner": false
+  },
+  "proj6": {
+   "experiment": "projectile/video_6_fps30_cropped",
+   "local": "/tmp/stress2/proj6.mp4",
+   "error": "ValueError: need >= 20 observations, got 12",
+   "winner": false
+  },
+  "proj7": {
+   "experiment": "projectile/video_7_fps30_cropped",
+   "local": "/tmp/stress2/proj7.mp4",
+   "error": "ValueError: cleaning left 19 < 20 observations",
+   "winner": false
+  }
+ }
+}

@@ -1,0 +1,144 @@
+{
+ "method": "v2: motion tracker -> circle-fit pivot (RMS reported) -> unwrapped angle -> period from peak spacing -> sin(q) fit, period predicted with elliptic amplitude correction; v1 columns retained for continuity",
+ "criterion": "corrected period agreement within 5% on at least 3 clips (bar unchanged from v1; estimator fixed)",
+ "n_pass": 5,
+ "n_total": 5,
+ "success": true,
+ "clips": {
+  "pend_h1": {
+   "experiment": "holonomic_pendulum/video_1_fps30",
+   "local": "/tmp/stress2/pend_h1.mp4",
+   "n": 584,
+   "fps": 30.000000000000107,
+   "pivot_px": [
+    508.3810904298035,
+    585.2998490442816
+   ],
+   "radius_px": 354.3375470145982,
+   "pivot_fit_rms_px": 16.728057769505263,
+   "amplitude_rad": 1.4702255058952551,
+   "n_peaks": 5,
+   "period_measured_s": 4.333333333333333,
+   "ok": true,
+   "error": null,
+   "held_nrmse": 0.02200351878031866,
+   "k_sin": -2.4133757969190217,
+   "period_predicted_s": 4.318588435371076,
+   "rel_err_corrected": 0.003402668760520815,
+   "pass_5pct": true,
+   "v1": {
+    "fitted_k": -1.994502930107487,
+    "expected_k": -2.1024009375101596,
+    "rel_err": 0.05132132766762102
+   }
+  },
+  "pend_h2": {
+   "experiment": "holonomic_pendulum/video_2_fps30",
+   "local": "/tmp/stress2/pend_h2.mp4",
+   "n": 439,
+   "fps": 30.000000000000107,
+   "pivot_px": [
+    517.3143648728325,
+    627.8495979075083
+   ],
+   "radius_px": 284.20268380415325,
+   "pivot_fit_rms_px": 14.931333867428283,
+   "amplitude_rad": 1.55554757671938,
+   "n_peaks": 3,
+   "period_measured_s": 4.299999999999985,
+   "ok": true,
+   "error": null,
+   "held_nrmse": 0.011711574707728331,
+   "k_sin": -2.5619418756769443,
+   "period_predicted_s": 4.276930178099681,
+   "rel_err_corrected": 0.005365074860535792,
+   "pass_5pct": true,
+   "v1": {
+    "fitted_k": -1.9911932146748499,
+    "expected_k": -2.135122639500147,
+    "rel_err": 0.06741037829049128
+   }
+  },
+  "pend_h3": {
+   "experiment": "holonomic_pendulum/video_3_fps30",
+   "local": "/tmp/stress2/pend_h3.mp4",
+   "n": 431,
+   "fps": 30.000000000000107,
+   "pivot_px": [
+    508.74122987203424,
+    584.8305197478525
+   ],
+   "radius_px": 355.0014604523328,
+   "pivot_fit_rms_px": 13.322922451315621,
+   "amplitude_rad": 1.4019184402907616,
+   "n_peaks": 3,
+   "period_measured_s": 4.25,
+   "ok": true,
+   "error": null,
+   "held_nrmse": 0.010398781679030607,
+   "k_sin": -2.472922123326584,
+   "period_predicted_s": 4.268633539552367,
+   "rel_err_corrected": 0.00438436224761569,
+   "pass_5pct": true,
+   "v1": {
+    "fitted_k": -2.042312757646156,
+    "expected_k": -2.185656337957505,
+    "rel_err": 0.06558376896767928
+   }
+  },
+  "pend_h4": {
+   "experiment": "holonomic_pendulum/video_4_fps30",
+   "local": "/tmp/stress2/pend_h4.mp4",
+   "n": 460,
+   "fps": 30.000000000000107,
+   "pivot_px": [
+    508.6750408521016,
+    584.8337548456389
+   ],
+   "radius_px": 354.9067665857097,
+   "pivot_fit_rms_px": 14.937495086345224,
+   "amplitude_rad": 1.3772937260565477,
+   "n_peaks": 3,
+   "period_measured_s": 4.183333333333334,
+   "ok": true,
+   "error": null,
+   "held_nrmse": 0.07735762780100751,
+   "k_sin": -2.6110229732958463,
+   "period_predicted_s": 4.15517473302047,
+   "rel_err_corrected": 0.0067311395170192275,
+   "pass_5pct": true,
+   "v1": {
+    "fitted_k": -2.1667279718909667,
+    "expected_k": -2.2558737698716964,
+    "rel_err": 0.03951719248271589
+   }
+  },
+  "pend_h5": {
+   "experiment": "holonomic_pendulum/video_5_fps30",
+   "local": "/tmp/stress2/pend_h5.mp4",
+   "n": 497,
+   "fps": 30.000000000000107,
+   "pivot_px": [
+    508.66531483604774,
+    584.9387341271365
+   ],
+   "radius_px": 354.79767029782937,
+   "pivot_fit_rms_px": 14.883354358367455,
+   "amplitude_rad": 1.4248760676637677,
+   "n_peaks": 4,
+   "period_measured_s": 3.5,
+   "ok": true,
+   "error": null,
+   "held_nrmse": 0.1361582738195113,
+   "k_sin": -3.583089534556777,
+   "period_predicted_s": 3.4849921210851345,
+   "rel_err_corrected": 0.004287965404247299,
+   "pass_5pct": true,
+   "v1": {
+    "fitted_k": -3.036840675332969,
+    "expected_k": -3.2227279677026472,
+    "rel_err": 0.05768010649133068
+   }
+  }
+ }
+}

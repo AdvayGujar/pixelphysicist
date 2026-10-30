@@ -170,8 +170,11 @@ does not.
   sign-flip-and-return trajectory, the frictionless parabola, and exact
   Coulomb-friction recovery. One-direction rolls are reported as the
   constant-deceleration case they are.
-- No third-party-clip robustness numbers exist in any `results/*.json`;
-  see the flag at the end of this file.
+- **Third-party (Morpheus) robustness**: the full record is in
+  Section 7 below and `results/dataset_mining.json`,
+  `results/pendulum_consistency.json`, `results/jointfit.json`
+  (runners: `scripts/mine_dataset.py`,
+  `scripts/pendulum_consistency.py`).
 
 ## 6. What the numbers do and do not show
 
@@ -201,3 +204,101 @@ per-repeat breakdown issue: repeats 1-3 submitted/kept baseline, r4 was an
 unsubmitted `v**3` fallback, r5 submitted `q**2`. (c) S v2 B-mean
 0.04070025122372742 mixes 2 fallbacks at 0.0084 with 3 baselines at
 0.0622 — the mean is reported verbatim, not as a success.
+
+## 7. Tasks A-C (Morpheus drag mining, pendulum consistency, joint fit)
+
+Sources: `results/dataset_mining.json`, `results/pendulum_consistency.json`,
+`results/jointfit.json`. Split everywhere 60/40 unless noted. Third-party
+clips live in `/tmp/stress2/` only, never committed (MIT licence, attribution
+in README).
+
+### A. Dataset mining — real clip where drag beats gravity
+
+Pre-registered winner rule (unchanged): drag held-NRMSE <=0.8×gravity AND
+<baseline, with negative drag coefficient. 12 clips, motion tracker,
+1-DOF vertical_q, no trim/scale.
+
+- Winners (2/12):
+  - `ball5` falling_ball/video_5: baseline 0.008344923320049139 (BIC
+    -131.54846298644156), gravity 0.03559489976504714, drag
+    0.004927063885487741 (BIC -101.18135397068866), coeff
+    [-450.96236108922943, -0.0006202239982480519] → winner True.
+  - `ball8` falling_ball/video_8: baseline 0.009315324216663248 (BIC
+    -127.71308922601456), gravity 0.034319118996290664, drag
+    0.003666150556292589 (BIC -108.81942731517124), coeff
+    [-462.7321275755624, -0.0005892416426952394] → winner True.
+- Non-winners include `ball0` (drag 0.005971084100099659 loses to baseline
+  0.00557548231337142), `tape0` (baseline failed, drag 0.0980087396174026 vs
+  gravity 0.1573096169610828 but baseline not ok → not counted),
+  `proj5` (drag failed), `proj6`/`proj7` (too few points: 12 obs / cleaning
+  <20, recorded as errors).
+- Live Spark on winners (effort low, guard v1, cap $0.50):
+  - ball8 (`small orange ball`, motion, no trim): submitted
+    [1, q, v, sign(v)] held 0.003549862916634604, BIC -102.45625842862425,
+    rounds 6, cost $0.05480275. Tried [1,q,v,abs(v)*v] (held 0.0093, no gain);
+    never tried sparse [1,abs(v)*v]. NOT a drag submit.
+  - ball5: submitted [1, q, v, v**3] held 0.006529838542153517, rounds 2,
+    cost $0.01271325. Also not drag.
+  - One transient 400 before the ball8 success (zero usage, retried after 16 s
+    per the Day-5 transport lesson).
+- Verdict at first attempt: offline winners exist, autonomous live
+  discovery did NOT submit quadratic drag. No README hero-claim change.
+- **Prompt v2 follow-up (2026-10-30, disclosed prompt change, not a
+  gate rerun):** the 1-DOF prompt gained a general parsimony rule --
+  "your FIRST drag fit must be the sparse replacement [1, abs(v)*v];
+  only add q/v back if residuals demand it" (the same replace-don't-add
+  principle the rolling prompt already carried). Re-running only the
+  two winners: ball8 submitted [1, abs(v)*v] with the offline
+  coefficients (-462.7, -0.000589), held 0.0037, 4 rounds, $0.0271;
+  ball5 submitted [1, abs(v)*v] (-451.0, -0.000620), held 0.0049,
+  3 rounds, $0.0188 (`runs/ball8_promptv2`, `runs/ball5_promptv2`).
+  Live drag discovery on real dataset footage now works; the v1-prompt
+  miss above stays in the record.
+
+### B. Pendulum quantitative check without a ruler
+
+**v1 method (failed, kept for the record):** motion track → circle-fit
+pivot → angle without unwrapping → linear stiffness vs -(2π/T)² with T
+from zero crossings. Result was 1/5 within 5% (only pend_h4 at 0.6%);
+the other four were artefacts: ±π wraps injected spurious crossings
+(one "period" of 0.78 s in a 19 s clip), and the mask centroid rides
+the rod, not the bob.
+
+**v2 method (`scripts/pendulum_consistency.py`, same 5 clips, same 5%
+bar):** track the bob as the farthest moving-contour point from the
+pivot (iterate pivot↔bob twice, pivot judged by circle-fit RMS),
+unwrap the angle, take the period from peak spacing, fit the true
+restoring term `sin(q)`, and predict each interval's period from its
+*local* amplitude via the elliptic correction
+T = T0·(2/π)·K(sin²(θ/2)) (comparing release amplitude against a
+whole-clip median period had manufactured ~6% disagreement on its own).
+
+| Clip | Pivot RMS (px) | T measured (s) | T predicted (s) | Agreement |
+|---|---|---|---|---|
+| pend_h1 | 16.7 | 4.333 | 4.319 | 0.34% |
+| pend_h2 | 14.9 | 4.300 | 4.277 | 0.54% |
+| pend_h3 | 13.3 | 4.250 | 4.269 | 0.44% |
+| pend_h4 | 14.9 | 4.183 | 4.155 | 0.67% |
+| pend_h5 | 14.9 | 3.500 | 3.485 | 0.43% |
+
+**5/5 within 5% → PASS.** All five clips are the same apparatus
+(periods 3.5–4.3 s); the v1 chaos was centroid artefact, not physics.
+Method changes were estimator fixes (bob point, unwrap, local
+amplitude), applied to every clip with the bar unchanged — no clips
+dropped, no pivots hand-tuned.
+
+### C. Joint two-toss fit breaks the q*v aliasing
+
+`physics.fit_terms_joint(terms, clips)`: shared coeffs, per-clip ICs,
+concatenated residual, same weak-init×3 / data-driven bounds / budget
+discipline as `fit_terms`. Tests in `tests/test_joint.py` (identity ~2e-9,
+clean recovery, tracked-pair preference) pass before any live run.
+
+- Single-clip S1 (tracked v0=6): drag held 0.008446170268754407 (BIC
+  -65.56312835270678) vs q*v held 0.003968992294840736 (BIC
+  -61.02901875971234) — distractor wins held, BIC prefers truth.
+- Joint on S1+S2 (30+35 pts, full trajectories): drag rss 0.9511877834821838,
+  BIC -249.54169442607372, coeffs [-2452.60129779623, -0.0014113618784904027];
+  q*v rss 163.51396628083887, BIC 93.3583220948091. Winner: drag.
+- Verdict: drag survives joint fitting; q*v does not. Maps to ablation.csv S
+  r2 (drag) vs r1/r3 (q*v).
