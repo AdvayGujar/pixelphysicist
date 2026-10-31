@@ -21,8 +21,8 @@ clip -> tracking -> calibration/coordinates -> trajectory cleaning
 | `calibrate.py` | scale/offset: px pass through, `/scale` to metres | `to_meters`, `describe_units` |
 | `trajectory.py` | clean, resample, coordinate, split, trim | `clean_observations`, `split_by_gaps`, `resample_uniform`, `smooth_position`, `trim_free_flight`, `vertical_q`, `rest_relative_q`, `pendulum_angle`, `save_observations`, `load_observations` |
 | `expr.py` | safe term grammar (AST whitelist, NumPy namespace) | `validate_terms`, `compile_term`, `basis_matrix`, `*_2d` variants; max 8 terms, 64 chars |
-| `physics.py` | weak-form init + shooting fit + NRMSE/BIC scoring | `fit_terms`, `score_candidate`, `simulate`, `rollout_score`, `weak_init`, `fit_projectile`, `score_projectile`, `nrmse`, `bic`; `BASELINE_TERMS=[1,q,v,v**2]` |
-| `scientist.py` | 3-tool Spark loop, both modes, submit guards | `ScientistTools`, `ProjectileTools`, `run_loop`, `default_chat_fn` |
+| `physics.py` | weak-form init + shooting fit + NRMSE/BIC scoring + joint fit + coefficient stderr | `fit_terms`, `fit_terms_joint`, `score_candidate`, `simulate`, `rollout_score`, `weak_init`, `fit_projectile`, `score_projectile`, `nrmse`, `bic`, `coefficient_stderr` (`FitResult.stderr`); `BASELINE_TERMS=[1,q,v,v**2]` |
+| `scientist.py` | 3-tool Spark loop, all modes, submit guards v1/v2/v3 | `ScientistTools`, `ProjectileTools`, `run_loop`, `default_chat_fn` |
 | `synthetic.py` | known-truth renderers (toss, 2-D projectile, spring, rolling) | `render_clip`, `render_spring`, `render_rolling`, `integrate_toss/spring/rolling` |
 | `render.py` | equation graph, ghost overlay, replay, report | `plot_equation`, `render_equation`, `render_overlay`, `render_replay_2d`, `render_replay_pixels`, `build_report` |
 | `cli.py` | argparse + orchestration, plausibility gate, 1-D/2-D paths | `main`, `track_observations`, `to_coordinate`, `run_1d`, `run_projectile`, `projectile_coordinates` |
@@ -45,7 +45,9 @@ One family, one base URL + Bearer key (`MODEL_API_KEY`), two surfaces:
   $1.25/$4.25 per Mtok in/out. Three tools: `fit_model` (structure in,
   fitted+scored model out), `plot_residuals` (fit-window residuals vs
   t/q/v as an image), `submit_model` (guard: beat baseline by >=2%
-  held-NRMSE **or** BIC under v1; **and** + train-within-5% under v2).
+  held-NRMSE **or** BIC under v1; **and** + train-within-5% under v2;
+  held-NRMSE **and** BIC, no train clause, under v3; gravity-only control
+  is the reference when the baseline fit itself failed).
 
 ## Trackers
 
@@ -84,8 +86,10 @@ report.html        # self-contained (base64 figures): equation, model table, cos
 ```
 
 Plus the append-only cost log `runs/cost.jsonl` (every API call).
-`scripts/`: `run_baseline.py`, `run_day4.py`, `run_ablation.py`,
-`transfer_check.py`, `track_batch.py`, `plot_qt.py`, `smoke_*`.
+`scripts/`: `run_baseline.py`, `run_day4.py`, `run_ablation.py` (`--guard`
+v1/v2/v3), `transfer_check.py`, `mine_dataset.py`,
+`pendulum_consistency.py`, `benchmark_morpheus.py`, `track_batch.py`,
+`plot_qt.py`, `smoke_*`.
 
 ## Cost model and guards
 

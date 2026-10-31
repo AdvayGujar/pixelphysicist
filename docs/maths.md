@@ -121,15 +121,37 @@ the baseline always passes; a candidate must beat it.
 v1 (shipped):  held_NRMSE <= 0.98 * baseline  OR  BIC < baseline_BIC
 v2 (audited):  held_NRMSE <= 0.98 * baseline  AND BIC < baseline_BIC
                AND train_RMSE <= 1.05 * baseline
+v3 (current):  held_NRMSE <= 0.98 * baseline  AND BIC < baseline_BIC
+               (no train clause)
 ```
 
 v1 accepted held-luck overfits (pendulum `v**3`/`sign(v)` additions with
 worse train RMSE and worse BIC passed on ~10% held gains). v2 cleaned the
 control (no spurious submissions) but its train gate rejects the TRUE
 sparse model: the 4-term baseline overfits the fit window, so sparse truth
-loses on train by construction (S drag 0.117 vs 0.102). The documented
-follow-up is held-NRMSE AND BIC, dropping train -- BIC already prices
-complexity.
+loses on train by construction (S drag 0.117 vs 0.102). v3 implements
+that follow-up (held-NRMSE AND BIC, drop train -- BIC already prices
+complexity); see `docs/results.md` §9 for the pre-registered v3 run.
+
+Reference fallback (`scientist.py`, `ScientistTools._guard_reference`):
+the reference is the baseline when its own fit succeeded; when the
+baseline fit failed (exploded rollout, held inf), the guard falls back to
+the standing gravity-only control (`["1"]` in 1-DOF, `(["0"], ["1"])` in
+projectile) instead of accepting anything finite. Only if the control
+also fails is a submission accepted unconditionally. This closed the
+benchmark loophole where the v1 OR-vs-inf accepted models worse than
+plain gravity (`docs/results.md` §8).
+
+Prompt and guard are versioned together: `SYSTEM_PROMPT` carries the v1
+rule, `V2_SYSTEM_PROMPT` / `V3_SYSTEM_PROMPT` swap in the v2/v3 rule by
+exact string replacement (with `v2_schemas()` / `v3_schemas()` carrying
+the matching tool text), so prompt text can never silently disagree with
+the enforced guard. The Day-4 gates (G4/G4b) ran under prompt/guard v1 --
+before the prompt-v2 parsimony rule below -- and stay in the record as
+historical. Prompt v2 added the "Parsimony first" clause to the 1-DOF
+system prompt: when quadratic drag is suspected, the FIRST drag fit must
+be the sparse replacement `[1, abs(v)*v]`, adding `q`/`v` back only if
+the sparse residuals demand it (`docs/results.md` §7).
 
 ## 6. Cross-take transfer via `rollout_score`
 

@@ -23,7 +23,9 @@ The fitting machinery underneath is shared (see `docs/maths.md`).
   (`docs/FAILURES.md`, 2026-10-27: first filmed takes were drops, re-filmed).
 - **Synthetic ground truth:** `TossParams(v0=6.0, gravity=9.81, drag=0.35)`,
   model `q'' = -g - c*v*|v|` (`src/pixelphys/synthetic.py`).
-- **Measured result:** 5/5 gate GREEN (`results/day4.json`): Spark submits
+- **Measured result:** 5/5 gate GREEN (`results/day4.json`, prompt/guard
+  v1 -- predates the prompt-v2 parsimony rule, so historical; see
+  `docs/results.md` §7): Spark submits
   `[1, abs(v)*v]` with `[-9.81, -0.35]`, held-NRMSE ~1e-9 vs baseline 0.135,
   BIC -788 vs -344.
 
@@ -44,7 +46,8 @@ The fitting machinery underneath is shared (see `docs/maths.md`).
   the baseline fails on curved flight while the coupled term fits both axes.
 - **Synthetic ground truth:** `ProjectileParams(v0=11.0, angle=52°,
   gravity=9.81, drag_k=0.06)` (`src/pixelphys/synthetic.py`).
-- **Measured result:** 5/5 gate GREEN (`results/day4.json`): Spark submits
+- **Measured result:** 5/5 gate GREEN (`results/day4.json`, prompt/guard
+  v1 -- predates the prompt-v2 parsimony rule, so historical): Spark submits
   x: `[sqrt(vx**2+vy**2)*vx]`, y: `[1, sqrt(vx**2+vy**2)*vy]` with k=-0.06
   on both axes, g=-9.81, held-NRMSE ~2e-7 vs baseline 0.015, BIC -939 vs -484.
 
@@ -114,7 +117,7 @@ The fitting machinery underneath is shared (see `docs/maths.md`).
 - **Projectile:** needs a clean 2-D arc; the color/motion tracker failing on
   static backgrounds silently fits furniture (Morpheus probe,
   `docs/FAILURES.md` 2026-10-29). Gravity-only control is `(["0"], ["1"])`.
-- **Spring:** validated on short clips only. The 31 s Morpheus spring (918
+- **Spring:** validated on short clips only. The 31 s Morpheus spring (930
   pts) defeats the long-window shooter: rollouts fail to integrate, an 8 s
   truncation scores held-NRMSE 5.2. Long/complex spring footage is out of
   envelope.

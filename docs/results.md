@@ -358,7 +358,7 @@ stays clean, S submits true drag in ≥3/5, H returns to baseline.
 | S synthetic tracked | 0.06255632091676147 | 0.008446170268754407 (5/5 correct) | GREEN |
 
 - S 5/5 submitted `[1, abs(v)*v]` (held 0.0084, BIC -65.6, train 0.1174;
-  costs 0.0103–0.0154) — prediction CONFIRMED, and unanimously. v3
+  costs 0.0093–0.0154) — prediction CONFIRMED, and unanimously. v3
   accepts what v2 rejected: train 0.1174 is +15% over baseline 0.102
   yet held+BIC both win.
 - H 3/3 found the same sparse drag (held 0.1872) but submitted 0/3:
@@ -408,3 +408,27 @@ The real-clip bands are usefully tight (drag sign firm at ±6%), not
 uselessly wide — reported, not dropped. Noiseless-fit bands sit at
 the integrator floor; coverage is validated with fixed-seed noise,
 where truth sits comfortably inside (test).
+
+## 11. Unseen clips (2026-10-31, offline, `scripts/unseen_check.py`)
+
+Nine Morpheus clips downloaded after every gate and prompt was frozen
+(no Spark calls — tracking + classical fits only), written to
+`results/unseen_clips.json`:
+
+- **Falling balls (3 new): 3/3 drag winners** by the Task-A rule
+  (drag beats gravity ~5–14× and the baseline): fall3 0.0065 vs 0.0345,
+  fall6 0.0025 vs 0.0351, fall9 0.0037 vs 0.0357. The drag discovery
+  generalises to fresh falling footage. falling_apple: no winner
+  (gravity 0.045, drag 0.200 — a dense apple, correctly unclaimed).
+- **Projectiles (2 new): drag does NOT beat gravity** (proj2 0.233 vs
+  0.092; proj3 0.242 vs 0.153). Dense lab projectiles are gravity
+  systems; the method says so.
+- **Rolling can / sliding book (along-x):** the can ties constant vs
+  Coulomb (0.0086 both — one-direction roll, inseparable, as the mode
+  docs predict); the sliding book is a clean Coulomb case
+  (0.141 vs constant 0.636, baseline 0.736).
+- **Pendulum #6 (pend7): FAILS** — period agreement 123% off. The clip
+  swings to ~175° (near-full rotation), outside the oscillation
+  estimator's regime; the five oscillation-regime clips in
+  `pendulum_consistency.json` remain 5/5 within 1%. Recorded as a
+  regime limit, not smoothed over.
