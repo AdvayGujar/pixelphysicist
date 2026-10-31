@@ -39,6 +39,27 @@ equation, not by the original video frames):
 
 ![Replay of a fitted projectile equation](docs/figures/replay.gif)
 
+**More examples.** A falling ball from the public dataset (never used
+when building the system) — the fitter picks air resistance over plain
+gravity by 14×:
+
+![Falling ball from public footage: drag beats gravity](docs/figures/falling_ball.png)
+
+A spring and a rolling ball (made-up clips with known answers, so we can
+check the numbers it finds):
+
+![Spring with stiffening physics found](docs/figures/spring_example.png)
+![Rolling ball with friction found](docs/figures/rolling_example.png)
+
+And a swing-by-swing honesty check on five public pendulum clips: does
+the fitted equation predict how long each swing takes?
+
+![Pendulum period check](docs/figures/pendulum_check.png)
+
+(Five for five within 1%. A sixth public pendulum that swings almost
+full-circle defeats the method — that failure is recorded too, in
+[docs/results.md](docs/results.md).)
+
 ## Four kinds of motion it understands
 
 | You film… | What it looks for | Example result |
@@ -98,7 +119,7 @@ uv venv
 source .venv/bin/activate
 uv pip install -e ".[dev]"
 cp .env.example .env   # fill in MODEL_API_KEY (one key serves both Meta models)
-pytest -q              # 110 checks, no API key needed
+pytest -q              # 120 checks, no API key needed
 ```
 
 Then, with a key in `.env`:

@@ -8,7 +8,6 @@ venv/
 # Env / secrets - never commit keys
 .env
 !.env.example
-
 # Runs, results, data (large / generated)
 runs/
 results/*.csv
@@ -25,6 +24,7 @@ results/*.json
 !results/dataset_mining.json
 !results/pendulum_consistency.json
 !results/jointfit.json
+!results/unseen_clips.json
 !results/benchmark.json
 !results/ablation_v3.json
 !results/ablation_v3.csv
@@ -33,18 +33,15 @@ data/synthetic/*
 !data/clips/.gitkeep
 !data/clips/notes.md
 !data/synthetic/.gitkeep
-
 # Local-only docs (planning notes, failure log, API transcripts) - never commit
 plan.md
 plan-v1.md
 response.md
 docs/FAILURES.md
-
 # Media
 *.mp4
 *.mov
 !tests/fixtures/*.mp4
-
 # OS / editor
 .DS_Store
 .idea/

@@ -1,0 +1,239 @@
+{
+ "note": "Offline (no Spark) scores on clips downloaded 2026-10-31 that played no part in tuning or gates. Clips are Morpheus (MIT), kept outside the repo.",
+ "clips": {
+  "fall3": {
+   "kind": "falling",
+   "n": 45,
+   "scores": {
+    "baseline": {
+     "ok": true,
+     "held_nrmse": 0.006936108844844629,
+     "coeffs": [
+      963.4056477101033,
+      4.702336411419257,
+      9.970030021753267,
+      0.01836524373168961
+     ],
+     "error": null
+    },
+    "gravity": {
+     "ok": true,
+     "held_nrmse": 0.034506775443701766,
+     "coeffs": [
+      -304.83697314780346
+     ],
+     "error": null
+    },
+    "drag": {
+     "ok": true,
+     "held_nrmse": 0.006536810317996561,
+     "coeffs": [
+      -434.97483513298073,
+      -0.0005228156572773419
+     ],
+     "error": null
+    }
+   },
+   "drag_winner": true
+  },
+  "fall6": {
+   "kind": "falling",
+   "n": 43,
+   "scores": {
+    "baseline": {
+     "ok": true,
+     "held_nrmse": 0.12708808924988363,
+     "coeffs": [
+      -4.308174432603147,
+      -3.3657113481548584,
+      -0.8862205101203312,
+      -0.005601295487664947
+     ],
+     "error": null
+    },
+    "gravity": {
+     "ok": true,
+     "held_nrmse": 0.035078506196608183,
+     "coeffs": [
+      -321.01737327454686
+     ],
+     "error": null
+    },
+    "drag": {
+     "ok": true,
+     "held_nrmse": 0.0024693856534339837,
+     "coeffs": [
+      -449.37027959765175,
+      -0.0005458134327607768
+     ],
+     "error": null
+    }
+   },
+   "drag_winner": true
+  },
+  "fall9": {
+   "kind": "falling",
+   "n": 42,
+   "scores": {
+    "baseline": {
+     "ok": true,
+     "held_nrmse": 0.0063908462882575,
+     "coeffs": [
+      2881.5728667960443,
+      10.693980404597115,
+      23.74200253581288,
+      0.04205354559241842
+     ],
+     "error": null
+    },
+    "gravity": {
+     "ok": true,
+     "held_nrmse": 0.03568291021293824,
+     "coeffs": [
+      -308.4253543692745
+     ],
+     "error": null
+    },
+    "drag": {
+     "ok": true,
+     "held_nrmse": 0.0036585798233243136,
+     "coeffs": [
+      -469.95184153299533,
+      -0.0006448291399458887
+     ],
+     "error": null
+    }
+   },
+   "drag_winner": true
+  },
+  "apple0": {
+   "kind": "falling",
+   "n": 39,
+   "scores": {
+    "baseline": {
+     "ok": false,
+     "held_nrmse": null,
+     "coeffs": [],
+     "error": "RuntimeError: integration failed for terms ['1', 'q', 'v', 'v**2']"
+    },
+    "gravity": {
+     "ok": true,
+     "held_nrmse": 0.04503008258087975,
+     "coeffs": [
+      -566.9907280248503
+     ],
+     "error": null
+    },
+    "drag": {
+     "ok": true,
+     "held_nrmse": 0.19986290951132704,
+     "coeffs": [
+      -332.11443592752846,
+      0.0015853024606274
+     ],
+     "error": null
+    }
+   },
+   "drag_winner": false
+  },
+  "proj2": {
+   "kind": "projectile",
+   "n": 43,
+   "baseline": {
+    "ok": false,
+    "held_nrmse": null,
+    "error": "RuntimeError: integration failed for terms ['1', 'x', 'vx', 'vx**2'] / ['1', 'y', 'vy', 'vy**2']"
+   },
+   "gravity": {
+    "ok": true,
+    "held_nrmse": 0.09169515429581854,
+    "error": null
+   },
+   "drag": {
+    "ok": true,
+    "held_nrmse": 0.23286714364561278,
+    "error": null
+   },
+   "drag_beats_gravity": false
+  },
+  "proj3": {
+   "kind": "projectile",
+   "n": 33,
+   "baseline": {
+    "ok": true,
+    "held_nrmse": 0.3330151115812821,
+    "error": null
+   },
+   "gravity": {
+    "ok": true,
+    "held_nrmse": 0.1529153401715248,
+    "error": null
+   },
+   "drag": {
+    "ok": true,
+    "held_nrmse": 0.24166399283478288,
+    "error": null
+   },
+   "drag_beats_gravity": false
+  },
+  "can0": {
+   "kind": "along_x",
+   "n": 96,
+   "baseline": {
+    "ok": false,
+    "held_nrmse": null,
+    "error": "RuntimeError: integration failed for terms ['1', 'q', 'v', 'v**2']"
+   },
+   "constant": {
+    "ok": true,
+    "held_nrmse": 0.008591335420097464,
+    "error": null
+   },
+   "coulomb": {
+    "ok": true,
+    "held_nrmse": 0.008591337298990922,
+    "error": null
+   }
+  },
+  "slide0": {
+   "kind": "along_x",
+   "n": 105,
+   "baseline": {
+    "ok": true,
+    "held_nrmse": 0.7362512566835135,
+    "error": null
+   },
+   "constant": {
+    "ok": true,
+    "held_nrmse": 0.6358977936602763,
+    "error": null
+   },
+   "coulomb": {
+    "ok": true,
+    "held_nrmse": 0.14104242768992864,
+    "error": null
+   }
+  },
+  "pend7": {
+   "kind": "pendulum",
+   "n": 397,
+   "fps": 30.000000000000107,
+   "pivot_px": [
+    453.1342620341345,
+    615.7573652440797
+   ],
+   "radius_px": 19.612983246349028,
+   "pivot_fit_rms_px": 11.722583038717863,
+   "amplitude_rad": 3.0528045894327978,
+   "n_peaks": 12,
+   "period_measured_s": 0.7333333333333307,
+   "ok": true,
+   "error": null,
+   "held_nrmse": 0.48326063004714787,
+   "k_sin": -14.848373554759398,
+   "period_predicted_s": 1.6378147913047905,
+   "rel_err_corrected": 1.2333838063247222,
+   "pass_5pct": false
+  }
+ }
+}
